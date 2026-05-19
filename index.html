@@ -3,24 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HLS Stream Player</title>
+    <title>HLS Tester — Player, Validator & Inspector</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="player-container">
-        <header class="player-header">
+    <div class="app-container">
+        <!-- Header -->
+        <header class="header">
             <div class="header-top">
-                <h1>🎬 HLS Stream Player</h1>
-                <button class="share-btn" id="shareBtn" title="Поделиться ссылкой на поток">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <circle cx="18" cy="5" r="3"/>
-                        <circle cx="6" cy="12" r="3"/>
-                        <circle cx="18" cy="19" r="3"/>
-                        <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/>
-                        <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
-                    </svg>
-                    Поделиться
-                </button>
+                <h1>HLS Tester</h1>
+                <span class="subtitle">Player · Validator · Inspector</span>
             </div>
             
             <div class="url-input-group">
@@ -31,38 +23,98 @@
                     id="urlInput"
                     autocomplete="off"
                 >
-                <button class="load-btn" id="loadBtn">
+                <button class="btn btn-primary" id="loadBtn">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
                         <polygon points="5,3 19,12 5,21"/>
                     </svg>
                     Play
                 </button>
+                <button class="btn btn-secondary" id="inspectBtn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"/>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                    </svg>
+                    Inspect
+                </button>
             </div>
 
             <div class="test-streams">
                 <span class="test-streams-label">Тестовые потоки:</span>
-                <button class="test-stream-btn" data-url="https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8">
+                <button class="btn btn-test" data-url="https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8">
                     Mux Test
                 </button>
-                <button class="test-stream-btn" data-url="https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_4x3/bipbop_4x3_variant.m3u8">
+                <button class="btn btn-test" data-url="https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_4x3/bipbop_4x3_variant.m3u8">
                     Apple BipBop
                 </button>
             </div>
         </header>
-        
-        <div class="video-wrapper">
-            <video id="video" controls playsinline></video>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Player Section -->
+            <section class="player-section">
+                <div class="video-wrapper">
+                    <video id="video" controls playsinline></video>
+                    <div class="video-placeholder" id="videoPlaceholder">
+                        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" opacity="0.3">
+                            <polygon points="5,3 19,12 5,21"/>
+                        </svg>
+                        <p>Введите URL потока и нажмите Play или Inspect</p>
+                    </div>
+                </div>
+                
+                <div class="status-bar">
+                    <div class="status-indicator">
+                        <span class="status-dot" id="statusDot"></span>
+                        <span id="statusText">Готов к работе</span>
+                    </div>
+                    <div class="status-actions">
+                        <span id="streamInfo"></span>
+                        <button class="btn btn-icon" id="shareBtn" title="Поделиться">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="18" cy="5" r="3"/>
+                                <circle cx="6" cy="12" r="3"/>
+                                <circle cx="18" cy="19" r="3"/>
+                                <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/>
+                                <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Inspector Panel -->
+            <aside class="inspector-panel" id="inspectorPanel">
+                <div class="panel-header">
+                    <h2>📋 Playlist Inspector</h2>
+                    <button class="btn btn-icon" id="closeInspector" title="Закрыть">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="18" y1="6" x2="6" y2="18"/>
+                            <line x1="6" y1="6" x2="18" y2="18"/>
+                        </svg>
+                    </button>
+                </div>
+                
+                <div class="panel-content" id="panelContent">
+                    <div class="panel-placeholder">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" opacity="0.3">
+                            <circle cx="11" cy="11" r="8"/>
+                            <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                        </svg>
+                        <p>Нажмите <strong>Inspect</strong> для анализа потока</p>
+                    </div>
+                </div>
+            </aside>
         </div>
-        
-        <footer class="status-bar">
-            <div class="status-indicator">
-                <span class="status-dot" id="statusDot"></span>
-                <span id="statusText">Ожидание потока</span>
-            </div>
-            <span id="streamInfo"></span>
-        </footer>
     </div>
     
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-spinner"></div>
+        <p id="loadingText">Анализ потока...</p>
+    </div>
+    
+    <!-- Notifications -->
     <div class="copy-notification" id="copyNotification">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="20 6 9 17 4 12"/>
