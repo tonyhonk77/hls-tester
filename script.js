@@ -14,7 +14,7 @@
 
     // State
     let hls = null;
-    const DEFAULT_STREAM = 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8';
+    const EMPTY_URL_MESSAGE = 'Вставьте ссылку на поток, либо выберите один из тестовых!';
 
     // Utility
     function getShareableUrl(streamUrl) {
@@ -29,13 +29,14 @@
             statusDot.classList.add('active');
         } else if (type === 'error') {
             statusDot.classList.add('error');
+        } else if (type === 'warning') {
+            statusDot.classList.add('error');
         }
         statusText.textContent = message;
     }
 
     function showCopyNotification() {
         copyNotification.classList.add('visible');
-        // Удаляем класс через 2 секунды
         clearTimeout(window._copyTimeout);
         window._copyTimeout = setTimeout(() => {
             copyNotification.classList.remove('visible');
@@ -55,7 +56,8 @@
 
     function loadStream(url) {
         if (!url) {
-            updateStatus('idle', 'Введите ссылку на поток');
+            updateStatus('warning', EMPTY_URL_MESSAGE);
+            streamInfo.textContent = '';
             return;
         }
 
@@ -154,7 +156,7 @@
 
     // Event Handlers
     function handleShare() {
-        const currentUrl = urlInput.value;
+        const currentUrl = urlInput.value.trim();
         if (!currentUrl) {
             alert('Нет загруженного потока для шаринга');
             return;
@@ -171,24 +173,20 @@
             }).then(() => {
                 console.log('Успешно поделились');
             }).catch((err) => {
-                // Пользователь отменил или ошибка — пробуем копировать
                 if (err.name !== 'AbortError') {
                     copyToClipboard(shareUrl);
                 }
             });
         } else {
-            // Десктоп: копируем в буфер обмена
             copyToClipboard(shareUrl);
         }
     }
 
     function copyToClipboard(text) {
-        // Современный метод
         if (navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText(text).then(() => {
                 showCopyNotification();
             }).catch(() => {
-                // Если не получилось — fallback
                 if (fallbackCopy(text)) {
                     showCopyNotification();
                 } else {
@@ -196,7 +194,6 @@
                 }
             });
         } else {
-            // Старый метод для старых браузеров
             if (fallbackCopy(text)) {
                 showCopyNotification();
             } else {
@@ -206,12 +203,24 @@
     }
 
     function handleLoadClick() {
-        loadStream(urlInput.value.trim());
+        const url = urlInput.value.trim();
+        if (!url) {
+            updateStatus('warning', EMPTY_URL_MESSAGE);
+            streamInfo.textContent = '';
+            return;
+        }
+        loadStream(url);
     }
 
     function handleInputKeypress(e) {
         if (e.key === 'Enter') {
-            loadStream(urlInput.value.trim());
+            const url = urlInput.value.trim();
+            if (!url) {
+                updateStatus('warning', EMPTY_URL_MESSAGE);
+                streamInfo.textContent = '';
+                return;
+            }
+            loadStream(url);
         }
     }
 
@@ -223,17 +232,27 @@
     function handlePopState(e) {
         if (e.state && e.state.stream) {
             loadStream(e.state.stream);
+        } else {
+            // Если вернулись на чистую страницу — очищаем поле
+            urlInput.value = '';
+            updateStatus('idle', 'Ожидание потока');
+            streamInfo.textContent = '';
         }
     }
 
-    // Initialize from URL parameters
-    function initFromUrl() {
+    // Initialize
+    function init() {
         const params = new URLSearchParams(window.location.search);
         const streamParam = params.get('stream');
+        
         if (streamParam) {
+            // Если перешли по ссылке с параметром ?stream=...
             loadStream(decodeURIComponent(streamParam));
         } else {
-            loadStream(DEFAULT_STREAM);
+            // Пустая страница без автозагрузки
+            urlInput.value = '';
+            updateStatus('idle', 'Ожидание потока');
+            streamInfo.textContent = '';
         }
     }
 
@@ -247,5 +266,5 @@
     window.addEventListener('popstate', handlePopState);
 
     // Initialize
-    initFromUrl();
+    init();
 })();
