@@ -20,20 +20,18 @@
     // ==================== State ====================
     let hls = null;
     let currentUrl = '';
-    let currentLevels = [];
     let currentLevel = -1; // -1 = auto
     const EMPTY_URL_MESSAGE = 'Вставьте ссылку на поток, либо выберите один из тестовых!';
 
     // ==================== Quality Selector ====================
     function createQualitySelector(levels) {
-        // Remove existing selector
+        // Удаляем старый селектор если есть
         const existingSelector = document.getElementById('qualitySelector');
         if (existingSelector) existingSelector.remove();
 
+        // Если уровней 1 или меньше - не показываем
         if (!levels || levels.length <= 1) return;
 
-        currentLevels = levels;
-        
         const selector = document.createElement('select');
         selector.id = 'qualitySelector';
         selector.className = 'quality-selector';
@@ -42,29 +40,27 @@
         const autoOption = document.createElement('option');
         autoOption.value = '-1';
         autoOption.textContent = '🎯 Авто';
-        autoOption.selected = currentLevel === -1;
         selector.appendChild(autoOption);
         
         // Level options
         levels.forEach((level, index) => {
             const option = document.createElement('option');
             option.value = index;
-            const height = level.height || '?';
+            const height = level.height || '?p';
             const bandwidth = level.bitrate ? Math.round(level.bitrate / 1000) : '?';
-            const codecs = level.codecs || '';
-            const codecShort = codecs.split(',')[0]?.replace(/"/g, '') || '';
-            
-            option.textContent = `${height}p${codecShort ? ' (' + codecShort + ')' : ''} — ${bandwidth} kbps`;
-            option.selected = index === currentLevel;
+            option.textContent = `${height} — ${bandwidth} kbps`;
             selector.appendChild(option);
         });
+        
+        // Восстанавливаем выбранный уровень
+        selector.value = currentLevel;
         
         selector.addEventListener('change', function() {
             const newLevel = parseInt(this.value);
             switchQuality(newLevel);
         });
         
-        // Insert before share button
+        // Вставляем перед кнопкой Share
         const statusActions = document.querySelector('.status-actions');
         const shareBtnEl = document.getElementById('shareBtn');
         statusActions.insertBefore(selector, shareBtnEl);
@@ -76,19 +72,22 @@
         currentLevel = levelIndex;
         
         if (levelIndex === -1) {
-            hls.currentLevel = -1; // Auto
-            streamInfo.textContent = `🎯 Авто | ${hls.levels.length} уровней`;
+            hls.currentLevel = -1; // Авто
+            const levels = hls.levels;
+            if (levels && levels.length > 0) {
+                streamInfo.textContent = `🎯 Авто | ${levels.length} уровней`;
+            }
         } else {
-            hls.currentLevel = levelIndex;
+            hls.currentLevel = levelIndex; // Фиксируем
             const level = hls.levels[levelIndex];
             if (level) {
-                const height = level.height || '?';
+                const height = level.height || '?p';
                 const bandwidth = level.bitrate ? Math.round(level.bitrate / 1000) : '?';
-                streamInfo.textContent = `🔒 ${height}p | ${bandwidth} kbps`;
+                streamInfo.textContent = `🔒 ${height} | ${bandwidth} kbps`;
             }
         }
         
-        // Update selector
+        // Синхронизируем селектор
         const selector = document.getElementById('qualitySelector');
         if (selector) {
             selector.value = levelIndex;
@@ -96,11 +95,10 @@
     }
 
     function updateQualitySelectorOnSwitch(event, data) {
-        if (currentLevel === -1) {
-            // Auto mode - update info
+        if (currentLevel === -1 && hls && hls.levels) {
             const level = hls.levels[data.level];
             if (level) {
-                streamInfo.textContent = `🎯 ${level.height}p | ${Math.round(level.bitrate / 1000)} kbps`;
+                streamInfo.textContent = `🎯 ${level.height || '?'}p | ${Math.round(level.bitrate / 1000)} kbps`;
             }
         }
     }
@@ -108,7 +106,6 @@
     function removeQualitySelector() {
         const selector = document.getElementById('qualitySelector');
         if (selector) selector.remove();
-        currentLevels = [];
         currentLevel = -1;
     }
 
@@ -432,10 +429,12 @@
                 // Create quality selector
                 createQualitySelector(data.levels);
                 
+                currentLevel = -1;
                 if (data.levels.length > 1) {
                     streamInfo.textContent = `🎯 Авто | ${data.levels.length} уровней`;
-                } else {
-                    streamInfo.textContent = `Качество: ${data.levels.length} уровень`;
+                } else if (data.levels.length === 1) {
+                    const level = data.levels[0];
+                    streamInfo.textContent = `${level.height || '?'}p | ${Math.round(level.bitrate / 1000)} kbps`;
                 }
                 
                 videoPlaceholder.style.display = 'none';
