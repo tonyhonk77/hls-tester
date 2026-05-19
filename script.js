@@ -1,37 +1,49 @@
 (function() {
     'use strict';
 
-    // DOM Elements
+    // ==================== DOM Elements ====================
     const video = document.getElementById('video');
+    const videoPlaceholder = document.getElementById('videoPlaceholder');
     const urlInput = document.getElementById('urlInput');
     const loadBtn = document.getElementById('loadBtn');
+    const inspectBtn = document.getElementById('inspectBtn');
     const shareBtn = document.getElementById('shareBtn');
     const statusDot = document.getElementById('statusDot');
     const statusText = document.getElementById('statusText');
     const streamInfo = document.getElementById('streamInfo');
+    const inspectorPanel = document.getElementById('inspectorPanel');
+    const panelContent = document.getElementById('panelContent');
+    const closeInspector = document.getElementById('closeInspector');
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    const loadingText = document.getElementById('loadingText');
     const copyNotification = document.getElementById('copyNotification');
-    const testStreamBtns = document.querySelectorAll('.test-stream-btn');
+    const testStreamBtns = document.querySelectorAll('.btn-test');
 
-    // State
+    // ==================== State ====================
     let hls = null;
+    let currentUrl = '';
     const EMPTY_URL_MESSAGE = 'Вставьте ссылку на поток, либо выберите один из тестовых!';
 
-    // Utility
+    // ==================== Utility Functions ====================
     function getShareableUrl(streamUrl) {
         const baseUrl = window.location.origin + window.location.pathname;
         return `${baseUrl}?stream=${streamUrl}`;
     }
 
-    // UI Updates
+    function showLoading(text = 'Загрузка...') {
+        loadingText.textContent = text;
+        loadingOverlay.classList.add('visible');
+    }
+
+    function hideLoading() {
+        loadingOverlay.classList.remove('visible');
+    }
+
     function updateStatus(type, message) {
         statusDot.className = 'status-dot';
-        if (type === 'active') {
-            statusDot.classList.add('active');
-        } else if (type === 'error') {
-            statusDot.classList.add('error');
-        } else if (type === 'warning') {
-            statusDot.classList.add('error');
-        }
+        if (type === 'active') statusDot.classList.add('active');
+        else if (type === 'error') statusDot.classList.add('error');
+        else if (type === 'warning') statusDot.classList.add('warning');
         statusText.textContent = message;
     }
 
@@ -43,7 +55,255 @@
         }, 2000);
     }
 
-    // Player Management
+    function fallbackCopy(text) {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.left = '-9999px';
+        textarea.style.top = '-9999px';
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        try {
+            document.execCommand('copy');
+            return true;
+        } catch (err) {
+            return false;
+        } finally {
+            document.body.removeChild(textarea);
+        }
+    }
+
+    function copyToClipboard(text) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(showCopyNotification).catch(() => {
+                if (fallbackCopy(text)) showCopyNotification();
+                else alert('Не удалось скопировать ссылку. Вот она:\n' + text);
+            });
+        } else {
+            if (fallbackCopy(text)) showCopyNotification();
+            else alert('Не удалось скопировать ссылку. Вот она:\n' + text);
+        }
+    }
+
+    // ==================== HLS Validation & Inspection ====================
+    async function fetchPlaylist(url) {
+        const response = await fetch(url, {
+            headers: { 'Accept': 'application/vnd.apple.mpegurl, application/x-mpegURL, */*' }
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        return await response.text();
+    }
+
+    function parsePlaylist(content, url) {
+        const lines = content.split('\n').map(l => l.trim()).filter(l => l);
+        const info = {
+            type: 'unknown',
+            version: null,
+            targetDuration: null,
+            mediaSequence: null,
+            isLive: true,
+            hasEndList: false,
+            variants: [],
+            tags: [],
+            totalDuration: 0,
+            codecs: new Set(),
+            resolutions: [],
+            bandwidths: [],
+            raw: content
+        };
+
+        for (const line of lines) {
+            // Collect all tags
+            if (line.startsWith('#EXT')) {
+                const tagName = line.split(':')[0];
+                if (!info.tags.includes(tagName)) info.tags.push(tagName);
+            }
+
+            // Version
+            if (line.startsWith('#EXT-X-VERSION:')) {
+                info.version = parseInt(line.split(':')[1]);
+            }
+            // Target Duration
+            if (line.startsWith('#EXT-X-TARGETDURATION:')) {
+                info.targetDuration = parseInt(line.split(':')[1]);
+            }
+            // Media Sequence
+            if (line.startsWith('#EXT-X-MEDIA-SEQUENCE:')) {
+                info.mediaSequence = parseInt(line.split(':')[1]);
+            }
+            // Endlist
+            if (line.startsWith('#EXT-X-ENDLIST')) {
+                info.hasEndList = true;
+                info.isLive = false;
+            }
+            // Type
+            if (line.startsWith('#EXTINF:')) {
+                info.type = 'media';
+                const dur = parseFloat(line.split(':')[1].split(',')[0]);
+                if (!isNaN(dur)) info.totalDuration += dur;
+            }
+            // Stream variants
+            if (line.startsWith('#EXT-X-STREAM-INF:')) {
+                info.type = 'master';
+                const attrs = {};
+                line.split(':')[1].split(',').forEach(attr => {
+                    const [key, value] = attr.split('=');
+                    if (key && value) attrs[key.trim()] = value.replace(/"/g, '').trim();
+                });
+                if (attrs.BANDWIDTH) info.bandwidths.push(parseInt(attrs.BANDWIDTH));
+                if (attrs.RESOLUTION) info.resolutions.push(attrs.RESOLUTION);
+                if (attrs.CODECS) {
+                    attrs.CODECS.split(',').forEach(c => info.codecs.add(c.trim()));
+                }
+                info.variants.push(attrs);
+            }
+            // Media groups
+            if (line.startsWith('#EXT-X-MEDIA:')) {
+                const attrs = {};
+                line.split(':')[1].split(',').forEach(attr => {
+                    const [key, value] = attr.split('=');
+                    if (key && value) attrs[key.trim()] = value.replace(/"/g, '').trim();
+                });
+                info.variants.push({ type: 'media', ...attrs });
+            }
+            // Independent segments
+            if (line.startsWith('#EXT-X-INDEPENDENT-SEGMENTS')) {
+                info.hasIndependentSegments = true;
+            }
+        }
+
+        return info;
+    }
+
+    function renderInspectionResult(info, url) {
+        const isMaster = info.type === 'master';
+        const isValid = info.version !== null || info.type !== 'unknown';
+
+        let html = '';
+
+        // Validation Status
+        html += '<div class="inspector-section">';
+        html += '<h3>🔍 Статус проверки</h3>';
+        html += '<div class="info-grid">';
+        html += `<div class="info-item"><div class="info-label">URL</div><div class="info-value">${escapeHtml(url)}</div></div>`;
+        html += `<div class="info-item"><div class="info-label">Доступность</div><div class="info-value valid">✓ Доступен</div></div>`;
+        html += `<div class="info-item"><div class="info-label">Тип плейлиста</div><div class="info-value">${isMaster ? 'Master (Multivariant)' : 'Media'}</div></div>`;
+        html += `<div class="info-item"><div class="info-label">Валидность</div><div class="info-value ${isValid ? 'valid' : 'invalid'}">${isValid ? '✓ Валидный HLS' : '✗ Ошибки в плейлисте'}</div></div>`;
+        if (info.version) html += `<div class="info-item"><div class="info-label">Версия HLS</div><div class="info-value">v${info.version}</div></div>`;
+        html += `<div class="info-item"><div class="info-label">Режим</div><div class="info-value">${info.isLive ? '🔴 Live' : '⏹ VOD'}</div></div>`;
+        if (info.targetDuration) html += `<div class="info-item"><div class="info-label">Target Duration</div><div class="info-value">${info.targetDuration} сек</div></div>`;
+        html += '</div></div>';
+
+        // Stream Info (for master playlists)
+        if (isMaster && info.variants.length > 0) {
+            html += '<div class="inspector-section">';
+            html += '<h3>📊 Варианты потоков</h3>';
+            html += '<div class="info-grid">';
+            html += `<div class="info-item"><div class="info-label">Количество</div><div class="info-value">${info.variants.filter(v => !v.type).length} видео</div></div>`;
+
+            // Resolutions
+            if (info.resolutions.length > 0) {
+                html += `<div class="info-item"><div class="info-label">Разрешения</div><div class="info-value">${info.resolutions.join(', ')}</div></div>`;
+            }
+
+            // Bandwidths
+            if (info.bandwidths.length > 0) {
+                const minBw = Math.min(...info.bandwidths);
+                const maxBw = Math.max(...info.bandwidths);
+                html += `<div class="info-item"><div class="info-label">Битрейты</div><div class="info-value">${Math.round(minBw/1000)} – ${Math.round(maxBw/1000)} kbps</div></div>`;
+            }
+
+            // Codecs
+            if (info.codecs.size > 0) {
+                html += `<div class="info-item"><div class="info-label">Кодеки</div><div class="info-value">${[...info.codecs].join(', ')}</div></div>`;
+            }
+
+            // Audio tracks
+            const audioTracks = info.variants.filter(v => v.type === 'AUDIO' || v.TYPE === 'AUDIO');
+            if (audioTracks.length > 0) {
+                html += `<div class="info-item"><div class="info-label">Аудио дорожки</div><div class="info-value">${audioTracks.length} шт.</div></div>`;
+            }
+
+            html += '</div></div>';
+        }
+
+        // Media playlist info
+        if (info.type === 'media') {
+            html += '<div class="inspector-section">';
+            html += '<h3>📺 Медиа плейлист</h3>';
+            html += '<div class="info-grid">';
+            html += `<div class="info-item"><div class="info-label">Длительность</div><div class="info-value">${info.totalDuration.toFixed(1)} сек</div></div>`;
+            html += `<div class="info-item"><div class="info-label">Media Sequence</div><div class="info-value">${info.mediaSequence || 'N/A'}</div></div>`;
+            html += `<div class="info-item"><div class="info-label">Endlist</div><div class="info-value">${info.hasEndList ? '✓ Да (VOD)' : '✗ Нет (Live)'}</div></div>`;
+            html += '</div></div>';
+        }
+
+        // Tags found
+        if (info.tags.length > 0) {
+            html += '<div class="inspector-section">';
+            html += '<h3>🏷 HLS Теги</h3>';
+            html += '<div class="tag-list">';
+            info.tags.forEach(tag => {
+                html += `<span class="tag">${escapeHtml(tag)}</span>`;
+            });
+            html += '</div></div>';
+        }
+
+        // Raw playlist
+        html += '<div class="inspector-section">';
+        html += '<h3>📝 Сырой плейлист</h3>';
+        html += `<div class="raw-playlist">${escapeHtml(info.raw)}</div></div>`;
+
+        panelContent.innerHTML = html;
+        inspectorPanel.classList.add('visible');
+        document.querySelector('.main-content').style.gridTemplateColumns = '1fr 1fr';
+    }
+
+    function showInspectionError(error, url) {
+        let html = '';
+        html += '<div class="inspector-section">';
+        html += '<h3>🔍 Статус проверки</h3>';
+        html += '<div class="info-grid">';
+        html += `<div class="info-item"><div class="info-label">URL</div><div class="info-value">${escapeHtml(url)}</div></div>`;
+        html += `<div class="info-item"><div class="info-label">Доступность</div><div class="info-value invalid">✗ Ошибка</div></div>`;
+        html += `<div class="info-item"><div class="info-label">Причина</div><div class="info-value invalid">${escapeHtml(error.message)}</div></div>`;
+        html += '</div></div>';
+
+        panelContent.innerHTML = html;
+        inspectorPanel.classList.add('visible');
+        document.querySelector('.main-content').style.gridTemplateColumns = '1fr 1fr';
+    }
+
+    function escapeHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
+    async function inspectStream(url) {
+        if (!url) {
+            updateStatus('warning', 'Введите ссылку для инспекции');
+            return;
+        }
+
+        showLoading('Анализ потока...');
+        updateStatus('warning', 'Инспекция потока...');
+
+        try {
+            const content = await fetchPlaylist(url);
+            const info = parsePlaylist(content, url);
+            renderInspectionResult(info, url);
+            updateStatus('active', 'Инспекция завершена');
+        } catch (error) {
+            showInspectionError(error, url);
+            updateStatus('error', 'Ошибка инспекции');
+        } finally {
+            hideLoading();
+        }
+    }
+
+    // ==================== Player Management ====================
     function destroyPlayer() {
         if (hls) {
             hls.destroy();
@@ -52,6 +312,8 @@
         video.pause();
         video.removeAttribute('src');
         video.load();
+        videoPlaceholder.style.display = '';
+        document.querySelector('.video-wrapper').classList.remove('playing');
     }
 
     function loadStream(url) {
@@ -62,12 +324,12 @@
         }
 
         destroyPlayer();
+        currentUrl = url;
         
         urlInput.value = url;
         streamInfo.textContent = 'Загрузка...';
         updateStatus('idle', 'Подключение к потоку...');
         
-        // Update URL without reloading — используем "красивую" ссылку
         const newUrl = getShareableUrl(url);
         window.history.pushState({ stream: url }, '', newUrl);
 
@@ -84,9 +346,9 @@
             hls.on(Hls.Events.MANIFEST_PARSED, function(event, data) {
                 updateStatus('active', 'Воспроизведение активно');
                 streamInfo.textContent = `Качество: ${data.levels.length} уровней`;
-                video.play().catch(() => {
-                    console.log('Автовоспроизведение заблокировано браузером');
-                });
+                videoPlaceholder.style.display = 'none';
+                document.querySelector('.video-wrapper').classList.add('playing');
+                video.play().catch(() => {});
             });
             
             hls.on(Hls.Events.ERROR, function(event, data) {
@@ -101,7 +363,7 @@
                             hls.recoverMediaError();
                             break;
                         default:
-                            updateStatus('error', 'Критическая ошибка воспроизведения');
+                            updateStatus('error', 'Критическая ошибка');
                             destroyPlayer();
                             break;
                     }
@@ -115,99 +377,38 @@
                 }
             });
             
-        // Native HLS support (Safari)
         } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
             video.src = url;
             video.addEventListener('loadedmetadata', function() {
-                updateStatus('active', 'Нативное HLS воспроизведение');
-                streamInfo.textContent = 'Встроенный HLS плеер';
+                updateStatus('active', 'Нативное HLS');
+                streamInfo.textContent = 'Встроенный плеер';
+                videoPlaceholder.style.display = 'none';
+                document.querySelector('.video-wrapper').classList.add('playing');
             });
-            video.play().catch(() => {
-                console.log('Автовоспроизведение заблокировано браузером');
-            });
-            
-        // No HLS support
+            video.play().catch(() => {});
         } else {
-            updateStatus('error', 'HLS не поддерживается браузером');
+            updateStatus('error', 'HLS не поддерживается');
             streamInfo.textContent = '❌ Не поддерживается';
         }
     }
 
-    // Fallback: копирование через старый метод
-    function fallbackCopy(text) {
-        const textarea = document.createElement('textarea');
-        textarea.value = text;
-        textarea.style.position = 'fixed';
-        textarea.style.left = '-9999px';
-        textarea.style.top = '-9999px';
-        document.body.appendChild(textarea);
-        textarea.focus();
-        textarea.select();
-        try {
-            document.execCommand('copy');
-            return true;
-        } catch (err) {
-            console.error('Fallback copy failed:', err);
-            return false;
-        } finally {
-            document.body.removeChild(textarea);
-        }
-    }
-
-    // Event Handlers
-    function handleShare() {
-        const currentUrl = urlInput.value.trim();
-        if (!currentUrl) {
-            alert('Нет загруженного потока для шаринга');
-            return;
-        }
-        
-        // Просто берём текущую ссылку из адресной строки — она уже красивая
-        const shareUrl = window.location.href;
-        
-        // Пробуем Web Share API (мобильные устройства)
-        if (navigator.share) {
-            navigator.share({
-                title: 'HLS Stream',
-                url: shareUrl
-            }).catch((err) => {
-                if (err.name !== 'AbortError') {
-                    copyToClipboard(shareUrl);
-                }
-            });
-        } else {
-            copyToClipboard(shareUrl);
-        }
-    }
-
-    function copyToClipboard(text) {
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(text).then(() => {
-                showCopyNotification();
-            }).catch(() => {
-                if (fallbackCopy(text)) {
-                    showCopyNotification();
-                } else {
-                    alert('Не удалось скопировать ссылку. Вот она:\n' + text);
-                }
-            });
-        } else {
-            if (fallbackCopy(text)) {
-                showCopyNotification();
-            } else {
-                alert('Не удалось скопировать ссылку. Вот она:\n' + text);
-            }
-        }
-    }
-
+    // ==================== Event Handlers ====================
     function handleLoadClick() {
         const url = urlInput.value.trim();
         if (!url) {
             updateStatus('warning', EMPTY_URL_MESSAGE);
-            streamInfo.textContent = '';
             return;
         }
         loadStream(url);
+    }
+
+    function handleInspectClick() {
+        const url = urlInput.value.trim();
+        if (!url) {
+            updateStatus('warning', 'Введите ссылку для инспекции');
+            return;
+        }
+        inspectStream(url);
     }
 
     function handleInputKeypress(e) {
@@ -215,7 +416,6 @@
             const url = urlInput.value.trim();
             if (!url) {
                 updateStatus('warning', EMPTY_URL_MESSAGE);
-                streamInfo.textContent = '';
                 return;
             }
             loadStream(url);
@@ -227,42 +427,58 @@
         loadStream(url);
     }
 
+    function handleShare() {
+        if (!currentUrl) {
+            alert('Нет загруженного потока');
+            return;
+        }
+        const shareUrl = window.location.href;
+        if (navigator.share) {
+            navigator.share({ title: 'HLS Stream', url: shareUrl }).catch(() => copyToClipboard(shareUrl));
+        } else {
+            copyToClipboard(shareUrl);
+        }
+    }
+
+    function handleCloseInspector() {
+        inspectorPanel.classList.remove('visible');
+        document.querySelector('.main-content').style.gridTemplateColumns = '1fr';
+    }
+
     function handlePopState(e) {
         if (e.state && e.state.stream) {
             loadStream(e.state.stream);
         } else {
-            // Если вернулись на чистую страницу — очищаем поле
             urlInput.value = '';
-            updateStatus('idle', 'Ожидание потока');
+            currentUrl = '';
+            updateStatus('idle', 'Готов к работе');
             streamInfo.textContent = '';
+            destroyPlayer();
         }
     }
 
-    // Initialize
+    // ==================== Initialize ====================
     function init() {
         const params = new URLSearchParams(window.location.search);
         const streamParam = params.get('stream');
         
         if (streamParam) {
-            // Если перешли по ссылке с параметром ?stream=...
             loadStream(streamParam);
         } else {
-            // Пустая страница без автозагрузки
             urlInput.value = '';
-            updateStatus('idle', 'Ожидание потока');
+            updateStatus('idle', 'Готов к работе');
             streamInfo.textContent = '';
         }
     }
 
-    // Event Listeners
+    // ==================== Event Listeners ====================
     loadBtn.addEventListener('click', handleLoadClick);
+    inspectBtn.addEventListener('click', handleInspectClick);
     urlInput.addEventListener('keypress', handleInputKeypress);
     shareBtn.addEventListener('click', handleShare);
-    testStreamBtns.forEach(btn => {
-        btn.addEventListener('click', handleTestStreamClick);
-    });
+    closeInspector.addEventListener('click', handleCloseInspector);
+    testStreamBtns.forEach(btn => btn.addEventListener('click', handleTestStreamClick));
     window.addEventListener('popstate', handlePopState);
 
-    // Initialize
     init();
 })();
