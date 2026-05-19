@@ -124,7 +124,7 @@ body {
     cursor: pointer;
     transition: all var(--transition-base);
     white-space: nowrap;
-    display: flex;
+    display: inline-flex;
     align-items: center;
     gap: 7px;
 }
@@ -180,7 +180,7 @@ body {
     color: var(--color-text-muted);
     cursor: pointer;
     transition: all var(--transition-base);
-    display: flex;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
 }
@@ -198,7 +198,7 @@ body {
     display: flex;
     align-items: center;
     gap: 8px;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
 }
 
 .test-streams-label {
@@ -207,6 +207,7 @@ body {
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.8px;
+    white-space: nowrap;
 }
 
 /* Main Content */
@@ -435,19 +436,23 @@ body {
     white-space: nowrap;
 }
 
+/* Raw Playlist - с правильными переносами */
 .raw-playlist {
     background: var(--color-code-bg);
     border-radius: var(--radius-sm);
     padding: 14px;
-    font-family: 'SF Mono', 'Fira Code', monospace;
-    font-size: 12px;
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 11px;
+    line-height: 1.7;
     color: var(--color-text-muted);
-    overflow-x: auto;
-    white-space: pre;
+    border: 1px solid var(--color-border);
     max-height: 300px;
     overflow-y: auto;
-    line-height: 1.6;
-    border: 1px solid var(--color-border);
+    overflow-x: auto;
+    white-space: pre;
+    word-break: break-all;
+    overflow-wrap: break-word;
+    tab-size: 2;
 }
 
 /* Loading Overlay */
@@ -511,7 +516,9 @@ body {
     transform: translateX(0);
 }
 
-/* Responsive */
+/* ==================== RESPONSIVE ==================== */
+
+/* Планшеты и узкие экраны */
 @media (max-width: 900px) {
     .main-content {
         grid-template-columns: 1fr;
@@ -522,7 +529,7 @@ body {
     }
 
     .btn {
-        padding: 13px 16px;
+        padding: 12px 16px;
         font-size: 13px;
     }
 
@@ -533,8 +540,15 @@ body {
     .header-top h1 {
         font-size: 22px;
     }
+
+    /* Кнопки тестовых потоков всегда в строку */
+    .test-streams {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+    }
 }
 
+/* Мобильные */
 @media (max-width: 500px) {
     body {
         padding: 8px;
@@ -546,10 +560,62 @@ body {
 
     .btn {
         justify-content: center;
+        width: 100%;
     }
 
+    .header {
+        padding: 12px;
+    }
+
+    .header-top h1 {
+        font-size: 20px;
+    }
+
+    /* Тестовые потоки - строго в одну строку */
     .test-streams {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        gap: 6px;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .test-streams-label {
+        flex-shrink: 0;
+    }
+
+    .btn-test {
+        flex-shrink: 0;
+        padding: 6px 10px;
+        font-size: 11px;
+    }
+
+    .status-bar {
         flex-direction: column;
-        align-items: flex-start;
+        gap: 8px;
+        text-align: center;
+    }
+
+    .status-actions {
+        width: 100%;
+        justify-content: center;
+    }
+
+    /* Панель инспектора */
+    .inspector-panel {
+        max-height: 400px;
+    }
+
+    .panel-content {
+        padding: 12px;
+    }
+
+    .info-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .raw-playlist {
+        font-size: 10px;
+        padding: 10px;
+        max-height: 200px;
     }
 }
