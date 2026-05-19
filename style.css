@@ -275,6 +275,8 @@ body {
     align-items: center;
     border-top: 1px solid var(--color-border);
     font-size: 13px;
+    gap: 10px;
+    flex-wrap: wrap;
 }
 
 .status-indicator {
@@ -282,12 +284,14 @@ body {
     align-items: center;
     gap: 10px;
     color: var(--color-text-muted);
+    flex-shrink: 0;
 }
 
 .status-actions {
     display: flex;
     align-items: center;
     gap: 10px;
+    flex-shrink: 0;
 }
 
 .status-dot {
@@ -319,6 +323,45 @@ body {
     0% { box-shadow: 0 0 0 0 rgba(72, 187, 120, 0.6); }
     70% { box-shadow: 0 0 0 7px rgba(72, 187, 120, 0); }
     100% { box-shadow: 0 0 0 0 rgba(72, 187, 120, 0); }
+}
+
+/* Quality Selector */
+.quality-selector {
+    padding: 7px 30px 7px 12px;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--color-text-muted);
+    border: 1px solid var(--color-border-light);
+    border-radius: var(--radius-xs);
+    font-size: 12px;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    cursor: pointer;
+    outline: none;
+    transition: all var(--transition-base);
+    max-width: 180px;
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='rgba(255,255,255,0.5)' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    background-size: 12px;
+}
+
+.quality-selector:hover {
+    background-color: rgba(255, 255, 255, 0.12);
+    border-color: var(--color-primary);
+    color: var(--color-text);
+}
+
+.quality-selector:focus {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 8px rgba(102, 126, 234, 0.2);
+}
+
+.quality-selector option {
+    background: #1a1a3e;
+    color: var(--color-text);
+    padding: 8px;
 }
 
 /* Inspector Panel */
@@ -436,7 +479,7 @@ body {
     white-space: nowrap;
 }
 
-/* Raw Playlist - с правильными переносами */
+/* Raw Playlist */
 .raw-playlist {
     background: var(--color-code-bg);
     border-radius: var(--radius-sm);
@@ -488,37 +531,6 @@ body {
     to { transform: rotate(360deg); }
 }
 
-/* Quality Selector */
-.quality-selector {
-    padding: 6px 10px;
-    background: rgba(255, 255, 255, 0.06);
-    color: var(--color-text-muted);
-    border: 1px solid var(--color-border-light);
-    border-radius: var(--radius-xs);
-    font-size: 12px;
-    font-family: 'Segoe UI', system-ui, sans-serif;
-    cursor: pointer;
-    outline: none;
-    transition: all var(--transition-base);
-    max-width: 160px;
-}
-
-.quality-selector:hover {
-    background: rgba(255, 255, 255, 0.12);
-    border-color: var(--color-primary);
-    color: var(--color-text);
-}
-
-.quality-selector:focus {
-    border-color: var(--color-primary);
-    box-shadow: 0 0 8px rgba(102, 126, 234, 0.2);
-}
-
-.quality-selector option {
-    background: #1a1a3e;
-    color: var(--color-text);
-}
-
 .loading-overlay p {
     color: var(--color-text-muted);
     font-size: 14px;
@@ -549,7 +561,6 @@ body {
 
 /* ==================== RESPONSIVE ==================== */
 
-/* Планшеты и узкие экраны */
 @media (max-width: 900px) {
     .main-content {
         grid-template-columns: 1fr;
@@ -572,14 +583,17 @@ body {
         font-size: 22px;
     }
 
-    /* Кнопки тестовых потоков всегда в строку */
     .test-streams {
         flex-wrap: nowrap;
         overflow-x: auto;
     }
+
+    .status-bar {
+        flex-direction: row;
+        flex-wrap: wrap;
+    }
 }
 
-/* Мобильные */
 @media (max-width: 500px) {
     body {
         padding: 8px;
@@ -602,7 +616,6 @@ body {
         font-size: 20px;
     }
 
-    /* Тестовые потоки - строго в одну строку */
     .test-streams {
         flex-wrap: nowrap;
         overflow-x: auto;
@@ -623,15 +636,23 @@ body {
     .status-bar {
         flex-direction: column;
         gap: 8px;
-        text-align: center;
     }
 
     .status-actions {
         width: 100%;
         justify-content: center;
+        flex-wrap: wrap;
     }
 
-    /* Панель инспектора */
+    .quality-selector {
+        max-width: 140px;
+        font-size: 11px;
+    }
+
+    #streamInfo {
+        font-size: 11px;
+    }
+
     .inspector-panel {
         max-height: 400px;
     }
