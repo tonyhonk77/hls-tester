@@ -19,7 +19,18 @@
     // Utility
     function getShareableUrl(streamUrl) {
         const baseUrl = window.location.origin + window.location.pathname;
-        return `${baseUrl}?stream=${encodeURIComponent(streamUrl)}`;
+        return `${baseUrl}#${btoa(streamUrl)}`;
+    }
+
+    function getStreamFromHash() {
+        const hash = window.location.hash.substring(1);
+        if (!hash) return null;
+        try {
+            return atob(hash);
+        } catch (e) {
+            console.error('Invalid hash:', e);
+            return null;
+        }
     }
 
     // UI Updates
@@ -162,16 +173,13 @@
             return;
         }
         
-        const shareUrl = getShareableUrl(currentUrl);
+        const shareUrl = window.location.href;
         
         // Пробуем Web Share API (мобильные устройства)
         if (navigator.share) {
             navigator.share({
                 title: 'HLS Stream',
-                text: 'Смотри HLS поток',
                 url: shareUrl
-            }).then(() => {
-                console.log('Успешно поделились');
             }).catch((err) => {
                 if (err.name !== 'AbortError') {
                     copyToClipboard(shareUrl);
@@ -229,27 +237,25 @@
         loadStream(url);
     }
 
-    function handlePopState(e) {
-        if (e.state && e.state.stream) {
-            loadStream(e.state.stream);
-        } else {
-            // Если вернулись на чистую страницу — очищаем поле
-            urlInput.value = '';
-            updateStatus('idle', 'Ожидание потока');
-            streamInfo.textContent = '';
+    function handleHashChange() {
+        const streamUrl = getStreamFromHash();
+        if (streamUrl) {
+            loadStream(streamUrl);
         }
     }
 
     // Initialize
     function init() {
+        const hashStream = getStreamFromHash();
         const params = new URLSearchParams(window.location.search);
-        const streamParam = params.get('stream');
+        const paramStream = params.get('stream');
         
-        if (streamParam) {
-            // Если перешли по ссылке с параметром ?stream=...
-            loadStream(decodeURIComponent(streamParam));
+        // Приоритет: хеш, потом параметр
+        if (hashStream) {
+            loadStream(hashStream);
+        } else if (paramStream) {
+            loadStream(decodeURIComponent(paramStream));
         } else {
-            // Пустая страница без автозагрузки
             urlInput.value = '';
             updateStatus('idle', 'Ожидание потока');
             streamInfo.textContent = '';
@@ -263,7 +269,7 @@
     testStreamBtns.forEach(btn => {
         btn.addEventListener('click', handleTestStreamClick);
     });
-    window.addEventListener('popstate', handlePopState);
+    window.addEventListener('hashchange', handleHashChange);
 
     // Initialize
     init();
