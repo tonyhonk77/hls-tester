@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HLS Плеер</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .player-container {
+            width: 100%;
+            max-width: 800px;
+            background: rgba(0, 0, 0, 0.8);
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            overflow: hidden;
+            backdrop-filter: blur(10px);
+        }
+        
+        .player-header {
+            padding: 20px 24px;
+            background: rgba(255, 255, 255, 0.05);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .player-header h1 {
+            color: white;
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 16px;
+        }
+        
+        .url-input-group {
+            display: flex;
+            gap: 8px;
+        }
+        
+        .url-input {
+            flex: 1;
+            padding: 12px 16px;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            font-size: 14px;
+            outline: none;
+            transition: all 0.3s ease;
+        }
+        
+        .url-input::placeholder {
+            color: rgba(255, 255, 255, 0.5);
+        }
+        
+        .url-input:focus {
+            border-color: #667eea;
+            background: rgba(255, 255, 255, 0.15);
+        }
+        
+        .load-btn {
+            padding: 12px 24px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            white-space: nowrap;
+        }
+        
+        .load-btn:hover {
+            background: #5a67d8;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+        
+        .load-btn:active {
+            transform: translateY(0);
+        }
+        
+        .video-wrapper {
+            position: relative;
+            width: 100%;
+            background: black;
+        }
+        
+        video {
+            width: 100%;
+            display: block;
+        }
+        
+        .status-bar {
+            padding: 12px 24px;
+            background: rgba(255, 255, 255, 0.05);
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 12px;
+        }
+        
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #4a5568;
+        }
+        
+        .status-dot.active {
+            background: #48bb78;
+            box-shadow: 0 0 8px rgba(72, 187, 120, 0.6);
+        }
+        
+        .status-dot.error {
+            background: #f56565;
+            box-shadow: 0 0 8px rgba(245, 101, 101, 0.6);
+        }
+        
+        .preset-buttons {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+            flex-wrap: wrap;
+        }
+        
+        .preset-btn {
+            padding: 6px 12px;
+            background: rgba(255, 255, 255, 0.1);
+            color: rgba(255, 255, 255, 0.7);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 6px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .preset-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+        }
+        
+        @media (max-width: 600px) {
+            .url-input-group {
+                flex-direction: column;
+            }
+            
+            .player-header {
+                padding: 16px;
+            }
+            
+            .player-header h1 {
+                font-size: 20px;
+            }
+            
+            .preset-buttons {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="player-container">
+        <div class="player-header">
+            <h1>🎬 HLS Видеоплеер</h1>
+            <div class="url-input-group">
+                <input 
+                    type="text" 
+                    class="url-input" 
+                    placeholder="Введите ссылку на .m3u8 поток..."
+                    id="urlInput"
+                >
+                <button class="load-btn" id="loadBtn">▶ Воспроизвести</button>
+            </div>
+            <div class="preset-buttons">
+                <button class="preset-btn" data-url="https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8">
+                    Тестовый поток 1
+                </button>
+                <button class="preset-btn" data-url="https://test-streams.mux.dev/pts_shift/pts_shift.m3u8">
+                    Тестовый поток 2
+                </button>
+                <button class="preset-btn" data-url="https://test-streams.mux.dev/dai-discontinuity-daterange/bi-broadcast-demo.m3u8">
+                    Тестовый поток 3
+                </button>
+                <button class="preset-btn" data-url="https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_4x3/bipbop_4x3_variant.m3u8">
+                    Apple BipBop
+                </button>
+            </div>
+        </div>
+        
+        <div class="video-wrapper">
+            <video id="video" controls></video>
+        </div>
+        
+        <div class="status-bar">
+            <div class="status-indicator">
+                <span class="status-dot" id="statusDot"></span>
+                <span id="statusText">Готов к воспроизведению</span>
+            </div>
+            <span id="streamInfo"></span>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
+    <script>
+        const video = document.getElementById('video');
+        const urlInput = document.getElementById('urlInput');
+        const loadBtn = document.getElementById('loadBtn');
+        const statusDot = document.getElementById('statusDot');
+        const statusText = document.getElementById('statusText');
+        const streamInfo = document.getElementById('streamInfo');
+        
+        let hls = null;
+
+        function updateStatus(type, message) {
+            statusDot.className = 'status-dot';
+            if (type === 'active') {
+                statusDot.classList.add('active');
+                statusText.textContent = message;
+            } else if (type === 'error') {
+                statusDot.classList.add('error');
+                statusText.textContent = message;
+            } else {
+                statusText.textContent = message;
+            }
+        }
+
+        function destroyPlayer() {
+            if (hls) {
+                hls.destroy();
+                hls = null;
+            }
+            video.pause();
+            video.removeAttribute('src');
+            video.load();
+        }
+
+        function loadStream(url) {
+            if (!url) {
+                updateStatus('idle', 'Введите ссылку на поток');
+                return;
+            }
+
+            destroyPlayer();
+            
+            urlInput.value = url;
+            streamInfo.textContent = 'Загрузка...';
+            updateStatus('idle', 'Подключение к потоку...');
+
+            if (Hls.isSupported()) {
+                hls = new Hls();
+                
+                hls.loadSource(url);
+                hls.attachMedia(video);
+                
+                hls.on(Hls.Events.MANIFEST_PARSED, function(event, data) {
+                    updateStatus('active', 'Поток воспроизводится');
+                    streamInfo.textContent = `Уровней качества: ${data.levels.length}`;
+                    video.play().catch(e => {
+                        console.log('Автовоспроизведение заблокировано браузером');
+                    });
+                });
+                
+                hls.on(Hls.Events.ERROR, function(event, data) {
+                    if (data.fatal) {
+                        switch(data.type) {
+                            case Hls.ErrorTypes.NETWORK_ERROR:
+                                updateStatus('error', 'Ошибка сети. Пробую переподключиться...');
+                                hls.startLoad();
+                                break;
+                            case Hls.ErrorTypes.MEDIA_ERROR:
+                                updateStatus('error', 'Ошибка медиа. Пробую восстановить...');
+                                hls.recoverMediaError();
+                                break;
+                            default:
+                                updateStatus('error', 'Критическая ошибка. Невозможно воспроизвести поток');
+                                destroyPlayer();
+                                break;
+                        }
+                    }
+                });
+                
+                hls.on(Hls.Events.LEVEL_SWITCHED, function(event, data) {
+                    const level = hls.levels[data.level];
+                    if (level) {
+                        streamInfo.textContent = `Качество: ${level.height}p | Битрейт: ${Math.round(level.bitrate / 1000)} кбит/с`;
+                    }
+                });
+                
+            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                video.src = url;
+                video.addEventListener('loadedmetadata', function() {
+                    updateStatus('active', 'Поток воспроизводится (нативное HLS)');
+                    streamInfo.textContent = 'Нативное воспроизведение HLS';
+                });
+                video.play().catch(e => {
+                    console.log('Автовоспроизведение заблокировано браузером');
+                });
+            } else {
+                updateStatus('error', 'Ваш браузер не поддерживает HLS');
+                streamInfo.textContent = 'HLS не поддерживается';
+            }
+        }
+
+        loadBtn.addEventListener('click', () => {
+            loadStream(urlInput.value);
+        });
+
+        urlInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                loadStream(urlInput.value);
+            }
+        });
+
+        // Preset buttons
+        document.querySelectorAll('.preset-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const url = btn.getAttribute('data-url');
+                loadStream(url);
+            });
+        });
+
+        // Загружаем тестовый поток при открытии
+        loadStream('https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8');
+    </script>
+</body>
+</html>
