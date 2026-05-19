@@ -488,6 +488,37 @@ body {
     to { transform: rotate(360deg); }
 }
 
+/* Quality Selector */
+.quality-selector {
+    padding: 6px 10px;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--color-text-muted);
+    border: 1px solid var(--color-border-light);
+    border-radius: var(--radius-xs);
+    font-size: 12px;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    cursor: pointer;
+    outline: none;
+    transition: all var(--transition-base);
+    max-width: 160px;
+}
+
+.quality-selector:hover {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: var(--color-primary);
+    color: var(--color-text);
+}
+
+.quality-selector:focus {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 8px rgba(102, 126, 234, 0.2);
+}
+
+.quality-selector option {
+    background: #1a1a3e;
+    color: var(--color-text);
+}
+
 .loading-overlay p {
     color: var(--color-text-muted);
     font-size: 14px;
