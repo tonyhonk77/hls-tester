@@ -19,18 +19,7 @@
     // Utility
     function getShareableUrl(streamUrl) {
         const baseUrl = window.location.origin + window.location.pathname;
-        return `${baseUrl}#${btoa(streamUrl)}`;
-    }
-
-    function getStreamFromHash() {
-        const hash = window.location.hash.substring(1);
-        if (!hash) return null;
-        try {
-            return atob(hash);
-        } catch (e) {
-            console.error('Invalid hash:', e);
-            return null;
-        }
+        return `${baseUrl}?stream=${streamUrl}`;
     }
 
     // UI Updates
@@ -78,7 +67,7 @@
         streamInfo.textContent = 'Загрузка...';
         updateStatus('idle', 'Подключение к потоку...');
         
-        // Update URL without reloading
+        // Update URL without reloading — используем "красивую" ссылку
         const newUrl = getShareableUrl(url);
         window.history.pushState({ stream: url }, '', newUrl);
 
@@ -173,6 +162,7 @@
             return;
         }
         
+        // Просто берём текущую ссылку из адресной строки — она уже красивая
         const shareUrl = window.location.href;
         
         // Пробуем Web Share API (мобильные устройства)
@@ -237,25 +227,27 @@
         loadStream(url);
     }
 
-    function handleHashChange() {
-        const streamUrl = getStreamFromHash();
-        if (streamUrl) {
-            loadStream(streamUrl);
+    function handlePopState(e) {
+        if (e.state && e.state.stream) {
+            loadStream(e.state.stream);
+        } else {
+            // Если вернулись на чистую страницу — очищаем поле
+            urlInput.value = '';
+            updateStatus('idle', 'Ожидание потока');
+            streamInfo.textContent = '';
         }
     }
 
     // Initialize
     function init() {
-        const hashStream = getStreamFromHash();
         const params = new URLSearchParams(window.location.search);
-        const paramStream = params.get('stream');
+        const streamParam = params.get('stream');
         
-        // Приоритет: хеш, потом параметр
-        if (hashStream) {
-            loadStream(hashStream);
-        } else if (paramStream) {
-            loadStream(decodeURIComponent(paramStream));
+        if (streamParam) {
+            // Если перешли по ссылке с параметром ?stream=...
+            loadStream(streamParam);
         } else {
+            // Пустая страница без автозагрузки
             urlInput.value = '';
             updateStatus('idle', 'Ожидание потока');
             streamInfo.textContent = '';
@@ -269,7 +261,7 @@
     testStreamBtns.forEach(btn => {
         btn.addEventListener('click', handleTestStreamClick);
     });
-    window.addEventListener('hashchange', handleHashChange);
+    window.addEventListener('popstate', handlePopState);
 
     // Initialize
     init();
