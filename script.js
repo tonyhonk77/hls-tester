@@ -9,63 +9,14 @@
     const statusDot = document.getElementById('statusDot');
     const statusText = document.getElementById('statusText');
     const streamInfo = document.getElementById('streamInfo');
-    const historySection = document.getElementById('historySection');
-    const historyList = document.getElementById('historyList');
     const copyNotification = document.getElementById('copyNotification');
+    const testStreamBtns = document.querySelectorAll('.test-stream-btn');
 
     // State
     let hls = null;
-    const STORAGE_KEY = 'hls_player_history';
     const DEFAULT_STREAM = 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8';
-    const TEST_STREAMS = [
-        {
-            name: 'Тестовый поток (Mux)',
-            url: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8'
-        },
-        {
-            name: 'Apple BipBop',
-            url: 'https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_4x3/bipbop_4x3_variant.m3u8'
-        }
-    ];
-
-    // History Management
-    function getHistory() {
-        try {
-            return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
-        } catch {
-            return [];
-        }
-    }
-
-    function saveToHistory(url) {
-        let history = getHistory();
-        history = history.filter(item => item !== url);
-        history.unshift(url);
-        if (history.length > 10) history.pop();
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
-        renderHistory();
-    }
-
-    function renderHistory() {
-        const history = getHistory();
-        if (history.length === 0) {
-            historySection.classList.remove('visible');
-            return;
-        }
-        historySection.classList.add('visible');
-        historyList.innerHTML = history.map(url => {
-            const shortUrl = url.length > 50 ? url.substring(0, 47) + '...' : url;
-            return `<div class="history-item" data-url="${escapeHtml(url)}" title="${escapeHtml(url)}">${escapeHtml(shortUrl)}</div>`;
-        }).join('');
-    }
 
     // Utility
-    function escapeHtml(str) {
-        const div = document.createElement('div');
-        div.textContent = str;
-        return div.innerHTML;
-    }
-
     function getShareableUrl(streamUrl) {
         const baseUrl = window.location.origin + window.location.pathname;
         return `${baseUrl}?stream=${encodeURIComponent(streamUrl)}`;
@@ -112,12 +63,9 @@
         streamInfo.textContent = 'Загрузка...';
         updateStatus('idle', 'Подключение к потоку...');
         
-        // Update URL
+        // Update URL without reloading
         const newUrl = getShareableUrl(url);
         window.history.pushState({ stream: url }, '', newUrl);
-        
-        // Save to history
-        saveToHistory(url);
 
         // HLS.js playback
         if (Hls.isSupported()) {
@@ -218,12 +166,9 @@
         }
     }
 
-    function handleHistoryClick(e) {
-        const historyItem = e.target.closest('.history-item');
-        if (historyItem) {
-            const url = historyItem.getAttribute('data-url');
-            loadStream(url);
-        }
+    function handleTestStreamClick(e) {
+        const url = this.getAttribute('data-url');
+        loadStream(url);
     }
 
     function handlePopState(e) {
@@ -247,10 +192,11 @@
     loadBtn.addEventListener('click', handleLoadClick);
     urlInput.addEventListener('keypress', handleInputKeypress);
     shareBtn.addEventListener('click', handleShare);
-    historyList.addEventListener('click', handleHistoryClick);
+    testStreamBtns.forEach(btn => {
+        btn.addEventListener('click', handleTestStreamClick);
+    });
     window.addEventListener('popstate', handlePopState);
 
     // Initialize
-    renderHistory();
     initFromUrl();
 })();
