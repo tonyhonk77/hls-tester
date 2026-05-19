@@ -11,9 +11,7 @@
     const statusDot = document.getElementById('statusDot');
     const statusText = document.getElementById('statusText');
     const streamInfo = document.getElementById('streamInfo');
-    const inspectorPanel = document.getElementById('inspectorPanel');
     const panelContent = document.getElementById('panelContent');
-    const closeInspector = document.getElementById('closeInspector');
     const loadingOverlay = document.getElementById('loadingOverlay');
     const loadingText = document.getElementById('loadingText');
     const copyNotification = document.getElementById('copyNotification');
@@ -86,6 +84,25 @@
         }
     }
 
+    function escapeHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
+    // ==================== Inspector Panel ====================
+    function clearInspector() {
+        panelContent.innerHTML = `
+            <div class="panel-placeholder">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" opacity="0.3">
+                    <circle cx="11" cy="11" r="8"/>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+                <p>Нажмите <strong>Inspect</strong> для анализа потока</p>
+            </div>
+        `;
+    }
+
     // ==================== HLS Validation & Inspection ====================
     async function fetchPlaylist(url) {
         const response = await fetch(url, {
@@ -114,36 +131,29 @@
         };
 
         for (const line of lines) {
-            // Collect all tags
             if (line.startsWith('#EXT')) {
                 const tagName = line.split(':')[0];
                 if (!info.tags.includes(tagName)) info.tags.push(tagName);
             }
 
-            // Version
             if (line.startsWith('#EXT-X-VERSION:')) {
                 info.version = parseInt(line.split(':')[1]);
             }
-            // Target Duration
             if (line.startsWith('#EXT-X-TARGETDURATION:')) {
                 info.targetDuration = parseInt(line.split(':')[1]);
             }
-            // Media Sequence
             if (line.startsWith('#EXT-X-MEDIA-SEQUENCE:')) {
                 info.mediaSequence = parseInt(line.split(':')[1]);
             }
-            // Endlist
             if (line.startsWith('#EXT-X-ENDLIST')) {
                 info.hasEndList = true;
                 info.isLive = false;
             }
-            // Type
             if (line.startsWith('#EXTINF:')) {
                 info.type = 'media';
                 const dur = parseFloat(line.split(':')[1].split(',')[0]);
                 if (!isNaN(dur)) info.totalDuration += dur;
             }
-            // Stream variants
             if (line.startsWith('#EXT-X-STREAM-INF:')) {
                 info.type = 'master';
                 const attrs = {};
@@ -158,7 +168,6 @@
                 }
                 info.variants.push(attrs);
             }
-            // Media groups
             if (line.startsWith('#EXT-X-MEDIA:')) {
                 const attrs = {};
                 line.split(':')[1].split(',').forEach(attr => {
@@ -167,7 +176,6 @@
                 });
                 info.variants.push({ type: 'media', ...attrs });
             }
-            // Independent segments
             if (line.startsWith('#EXT-X-INDEPENDENT-SEGMENTS')) {
                 info.hasIndependentSegments = true;
             }
@@ -200,26 +208,24 @@
             html += '<div class="inspector-section">';
             html += '<h3>📊 Варианты потоков</h3>';
             html += '<div class="info-grid">';
-            html += `<div class="info-item"><div class="info-label">Количество</div><div class="info-value">${info.variants.filter(v => !v.type).length} видео</div></div>`;
+            
+            const videoVariants = info.variants.filter(v => !v.type || v.type !== 'media');
+            html += `<div class="info-item"><div class="info-label">Количество</div><div class="info-value">${videoVariants.length} видео</div></div>`;
 
-            // Resolutions
             if (info.resolutions.length > 0) {
                 html += `<div class="info-item"><div class="info-label">Разрешения</div><div class="info-value">${info.resolutions.join(', ')}</div></div>`;
             }
 
-            // Bandwidths
             if (info.bandwidths.length > 0) {
                 const minBw = Math.min(...info.bandwidths);
                 const maxBw = Math.max(...info.bandwidths);
                 html += `<div class="info-item"><div class="info-label">Битрейты</div><div class="info-value">${Math.round(minBw/1000)} – ${Math.round(maxBw/1000)} kbps</div></div>`;
             }
 
-            // Codecs
             if (info.codecs.size > 0) {
                 html += `<div class="info-item"><div class="info-label">Кодеки</div><div class="info-value">${[...info.codecs].join(', ')}</div></div>`;
             }
 
-            // Audio tracks
             const audioTracks = info.variants.filter(v => v.type === 'AUDIO' || v.TYPE === 'AUDIO');
             if (audioTracks.length > 0) {
                 html += `<div class="info-item"><div class="info-label">Аудио дорожки</div><div class="info-value">${audioTracks.length} шт.</div></div>`;
@@ -256,8 +262,6 @@
         html += `<div class="raw-playlist">${escapeHtml(info.raw)}</div></div>`;
 
         panelContent.innerHTML = html;
-        inspectorPanel.classList.add('visible');
-        document.querySelector('.main-content').style.gridTemplateColumns = '1fr 1fr';
     }
 
     function showInspectionError(error, url) {
@@ -271,14 +275,6 @@
         html += '</div></div>';
 
         panelContent.innerHTML = html;
-        inspectorPanel.classList.add('visible');
-        document.querySelector('.main-content').style.gridTemplateColumns = '1fr 1fr';
-    }
-
-    function escapeHtml(str) {
-        const div = document.createElement('div');
-        div.textContent = str;
-        return div.innerHTML;
     }
 
     async function inspectStream(url) {
@@ -329,6 +325,9 @@
         urlInput.value = url;
         streamInfo.textContent = 'Загрузка...';
         updateStatus('idle', 'Подключение к потоку...');
+        
+        // Clear inspector when stream changes
+        clearInspector();
         
         const newUrl = getShareableUrl(url);
         window.history.pushState({ stream: url }, '', newUrl);
@@ -440,11 +439,6 @@
         }
     }
 
-    function handleCloseInspector() {
-        inspectorPanel.classList.remove('visible');
-        document.querySelector('.main-content').style.gridTemplateColumns = '1fr';
-    }
-
     function handlePopState(e) {
         if (e.state && e.state.stream) {
             loadStream(e.state.stream);
@@ -454,6 +448,7 @@
             updateStatus('idle', 'Готов к работе');
             streamInfo.textContent = '';
             destroyPlayer();
+            clearInspector();
         }
     }
 
@@ -476,7 +471,6 @@
     inspectBtn.addEventListener('click', handleInspectClick);
     urlInput.addEventListener('keypress', handleInputKeypress);
     shareBtn.addEventListener('click', handleShare);
-    closeInspector.addEventListener('click', handleCloseInspector);
     testStreamBtns.forEach(btn => btn.addEventListener('click', handleTestStreamClick));
     window.addEventListener('popstate', handlePopState);
 
