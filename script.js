@@ -20,7 +20,97 @@
     // ==================== State ====================
     let hls = null;
     let currentUrl = '';
+    let currentLevels = [];
+    let currentLevel = -1; // -1 = auto
     const EMPTY_URL_MESSAGE = 'Вставьте ссылку на поток, либо выберите один из тестовых!';
+
+    // ==================== Quality Selector ====================
+    function createQualitySelector(levels) {
+        // Remove existing selector
+        const existingSelector = document.getElementById('qualitySelector');
+        if (existingSelector) existingSelector.remove();
+
+        if (!levels || levels.length <= 1) return;
+
+        currentLevels = levels;
+        
+        const selector = document.createElement('select');
+        selector.id = 'qualitySelector';
+        selector.className = 'quality-selector';
+        
+        // Auto option
+        const autoOption = document.createElement('option');
+        autoOption.value = '-1';
+        autoOption.textContent = '🎯 Авто';
+        autoOption.selected = currentLevel === -1;
+        selector.appendChild(autoOption);
+        
+        // Level options
+        levels.forEach((level, index) => {
+            const option = document.createElement('option');
+            option.value = index;
+            const height = level.height || '?';
+            const bandwidth = level.bitrate ? Math.round(level.bitrate / 1000) : '?';
+            const codecs = level.codecs || '';
+            const codecShort = codecs.split(',')[0]?.replace(/"/g, '') || '';
+            
+            option.textContent = `${height}p${codecShort ? ' (' + codecShort + ')' : ''} — ${bandwidth} kbps`;
+            option.selected = index === currentLevel;
+            selector.appendChild(option);
+        });
+        
+        selector.addEventListener('change', function() {
+            const newLevel = parseInt(this.value);
+            switchQuality(newLevel);
+        });
+        
+        // Insert before share button
+        const statusActions = document.querySelector('.status-actions');
+        const shareBtnEl = document.getElementById('shareBtn');
+        statusActions.insertBefore(selector, shareBtnEl);
+    }
+
+    function switchQuality(levelIndex) {
+        if (!hls) return;
+        
+        currentLevel = levelIndex;
+        
+        if (levelIndex === -1) {
+            hls.currentLevel = -1; // Auto
+            streamInfo.textContent = `🎯 Авто | ${hls.levels.length} уровней`;
+        } else {
+            hls.currentLevel = levelIndex;
+            const level = hls.levels[levelIndex];
+            if (level) {
+                const height = level.height || '?';
+                const bandwidth = level.bitrate ? Math.round(level.bitrate / 1000) : '?';
+                streamInfo.textContent = `🔒 ${height}p | ${bandwidth} kbps`;
+            }
+        }
+        
+        // Update selector
+        const selector = document.getElementById('qualitySelector');
+        if (selector) {
+            selector.value = levelIndex;
+        }
+    }
+
+    function updateQualitySelectorOnSwitch(event, data) {
+        if (currentLevel === -1) {
+            // Auto mode - update info
+            const level = hls.levels[data.level];
+            if (level) {
+                streamInfo.textContent = `🎯 ${level.height}p | ${Math.round(level.bitrate / 1000)} kbps`;
+            }
+        }
+    }
+
+    function removeQualitySelector() {
+        const selector = document.getElementById('qualitySelector');
+        if (selector) selector.remove();
+        currentLevels = [];
+        currentLevel = -1;
+    }
 
     // ==================== Utility Functions ====================
     function getShareableUrl(streamUrl) {
@@ -190,7 +280,6 @@
 
         let html = '';
 
-        // Validation Status
         html += '<div class="inspector-section">';
         html += '<h3>🔍 Статус проверки</h3>';
         html += '<div class="info-grid">';
@@ -203,7 +292,6 @@
         if (info.targetDuration) html += `<div class="info-item"><div class="info-label">Target Duration</div><div class="info-value">${info.targetDuration} сек</div></div>`;
         html += '</div></div>';
 
-        // Stream Info (for master playlists)
         if (isMaster && info.variants.length > 0) {
             html += '<div class="inspector-section">';
             html += '<h3>📊 Варианты потоков</h3>';
@@ -234,7 +322,6 @@
             html += '</div></div>';
         }
 
-        // Media playlist info
         if (info.type === 'media') {
             html += '<div class="inspector-section">';
             html += '<h3>📺 Медиа плейлист</h3>';
@@ -245,7 +332,6 @@
             html += '</div></div>';
         }
 
-        // Tags found
         if (info.tags.length > 0) {
             html += '<div class="inspector-section">';
             html += '<h3>🏷 HLS Теги</h3>';
@@ -256,7 +342,6 @@
             html += '</div></div>';
         }
 
-        // Raw playlist
         html += '<div class="inspector-section">';
         html += '<h3>📝 Сырой плейлист</h3>';
         html += `<div class="raw-playlist">${escapeHtml(info.raw)}</div></div>`;
@@ -310,6 +395,7 @@
         video.load();
         videoPlaceholder.style.display = '';
         document.querySelector('.video-wrapper').classList.remove('playing');
+        removeQualitySelector();
     }
 
     function loadStream(url) {
@@ -326,13 +412,11 @@
         streamInfo.textContent = 'Загрузка...';
         updateStatus('idle', 'Подключение к потоку...');
         
-        // Clear inspector when stream changes
         clearInspector();
         
         const newUrl = getShareableUrl(url);
         window.history.pushState({ stream: url }, '', newUrl);
 
-        // HLS.js playback
         if (Hls.isSupported()) {
             hls = new Hls({
                 debug: false,
@@ -344,10 +428,23 @@
             
             hls.on(Hls.Events.MANIFEST_PARSED, function(event, data) {
                 updateStatus('active', 'Воспроизведение активно');
-                streamInfo.textContent = `Качество: ${data.levels.length} уровней`;
+                
+                // Create quality selector
+                createQualitySelector(data.levels);
+                
+                if (data.levels.length > 1) {
+                    streamInfo.textContent = `🎯 Авто | ${data.levels.length} уровней`;
+                } else {
+                    streamInfo.textContent = `Качество: ${data.levels.length} уровень`;
+                }
+                
                 videoPlaceholder.style.display = 'none';
                 document.querySelector('.video-wrapper').classList.add('playing');
                 video.play().catch(() => {});
+            });
+            
+            hls.on(Hls.Events.LEVEL_SWITCHED, function(event, data) {
+                updateQualitySelectorOnSwitch(event, data);
             });
             
             hls.on(Hls.Events.ERROR, function(event, data) {
@@ -366,13 +463,6 @@
                             destroyPlayer();
                             break;
                     }
-                }
-            });
-            
-            hls.on(Hls.Events.LEVEL_SWITCHED, function(event, data) {
-                const level = hls.levels[data.level];
-                if (level) {
-                    streamInfo.textContent = `🎯 ${level.height}p | ${Math.round(level.bitrate / 1000)} kbps`;
                 }
             });
             
