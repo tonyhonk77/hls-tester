@@ -35,7 +35,9 @@
 
     function showCopyNotification() {
         copyNotification.classList.add('visible');
-        setTimeout(() => {
+        // Удаляем класс через 2 секунды
+        clearTimeout(window._copyTimeout);
+        window._copyTimeout = setTimeout(() => {
             copyNotification.classList.remove('visible');
         }, 2000);
     }
@@ -129,29 +131,76 @@
         }
     }
 
+    // Fallback: копирование через старый метод
+    function fallbackCopy(text) {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.left = '-9999px';
+        textarea.style.top = '-9999px';
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        try {
+            document.execCommand('copy');
+            return true;
+        } catch (err) {
+            console.error('Fallback copy failed:', err);
+            return false;
+        } finally {
+            document.body.removeChild(textarea);
+        }
+    }
+
     // Event Handlers
-    async function handleShare() {
+    function handleShare() {
         const currentUrl = urlInput.value;
-        if (!currentUrl) return;
+        if (!currentUrl) {
+            alert('Нет загруженного потока для шаринга');
+            return;
+        }
         
         const shareUrl = getShareableUrl(currentUrl);
         
+        // Пробуем Web Share API (мобильные устройства)
         if (navigator.share) {
-            try {
-                await navigator.share({
-                    title: 'HLS Stream',
-                    text: 'Смотри HLS поток',
-                    url: shareUrl
-                });
-            } catch (err) {
-                console.log('Шеринг отменён');
-            }
+            navigator.share({
+                title: 'HLS Stream',
+                text: 'Смотри HLS поток',
+                url: shareUrl
+            }).then(() => {
+                console.log('Успешно поделились');
+            }).catch((err) => {
+                // Пользователь отменил или ошибка — пробуем копировать
+                if (err.name !== 'AbortError') {
+                    copyToClipboard(shareUrl);
+                }
+            });
         } else {
-            try {
-                await navigator.clipboard.writeText(shareUrl);
+            // Десктоп: копируем в буфер обмена
+            copyToClipboard(shareUrl);
+        }
+    }
+
+    function copyToClipboard(text) {
+        // Современный метод
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(() => {
                 showCopyNotification();
-            } catch (err) {
-                console.error('Не удалось скопировать ссылку:', err);
+            }).catch(() => {
+                // Если не получилось — fallback
+                if (fallbackCopy(text)) {
+                    showCopyNotification();
+                } else {
+                    alert('Не удалось скопировать ссылку. Вот она:\n' + text);
+                }
+            });
+        } else {
+            // Старый метод для старых браузеров
+            if (fallbackCopy(text)) {
+                showCopyNotification();
+            } else {
+                alert('Не удалось скопировать ссылку. Вот она:\n' + text);
             }
         }
     }
@@ -166,7 +215,7 @@
         }
     }
 
-    function handleTestStreamClick(e) {
+    function handleTestStreamClick() {
         const url = this.getAttribute('data-url');
         loadStream(url);
     }
