@@ -129,6 +129,12 @@ body {
     gap: 7px;
 }
 
+.btn-sm {
+    padding: 8px 14px;
+    font-size: 12px;
+    border-radius: var(--radius-xs);
+}
+
 .btn-primary {
     background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%);
     color: var(--color-text);
@@ -209,10 +215,6 @@ body {
     grid-template-columns: 1fr 1fr;
     gap: 16px;
     min-height: 500px;
-}
-
-.main-content.with-inspector .player-section {
-    /* Player занимает левую колонку */
 }
 
 .player-section {
@@ -324,14 +326,10 @@ body {
     border-radius: var(--radius-lg);
     border: 1px solid var(--color-border);
     box-shadow: var(--shadow-lg);
-    display: none;
+    display: flex;
     flex-direction: column;
     overflow: hidden;
     max-height: 600px;
-}
-
-.inspector-panel.visible {
-    display: flex;
 }
 
 .panel-header {
