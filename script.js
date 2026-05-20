@@ -29,7 +29,7 @@
     // ==================== State ====================
     let hls = null;
     let currentUrl = '';
-    let currentLevel = -1; // -1 = auto
+    let currentLevel = -1;
     let logCount = 0;
     let errorCount = 0;
     const EMPTY_URL_MESSAGE = 'Вставьте ссылку на поток, либо выберите один из тестовых!';
@@ -50,18 +50,26 @@
             placeholder.className = '';
         }
 
-        const line = document.createElement('span');
-        line.className = `console-line console-line-${type}`;
+        // Создаём контейнер если его нет
+        let container = consoleContent.querySelector('.console-lines');
+        if (!container) {
+            container = document.createElement('div');
+            container.className = 'console-lines';
+            consoleContent.appendChild(container);
+        }
+
+        // Каждая строка — отдельный div для гарантированного переноса
+        const lineDiv = document.createElement('div');
+        lineDiv.className = `console-line console-line-${type}`;
         
         const timestamp = document.createElement('span');
         timestamp.className = 'console-timestamp';
         timestamp.textContent = `[${getTimestamp()}]`;
         
-        line.appendChild(timestamp);
-        line.appendChild(document.createTextNode(message));
+        lineDiv.appendChild(timestamp);
+        lineDiv.appendChild(document.createTextNode(' ' + message));
         
-        const container = consoleContent.querySelector('div') || consoleContent;
-        container.appendChild(line);
+        container.appendChild(lineDiv);
         
         // Автоскролл вниз
         consoleContent.scrollTop = consoleContent.scrollHeight;
@@ -125,7 +133,9 @@
             option.value = index;
             const height = level.height || '?p';
             const bandwidth = level.bitrate ? Math.round(level.bitrate / 1000) : '?';
-            option.textContent = `${height} — ${bandwidth} kbps`;
+            const codecs = level.attrs?.CODECS || level.codecs || '';
+            const codecShort = codecs ? codecs.replace(/"/g, '').split(',')[0] : '';
+            option.textContent = `${height}${codecShort ? ' ' + codecShort : ''} — ${bandwidth} kbps`;
             selector.appendChild(option);
         });
         
@@ -140,7 +150,20 @@
         const shareBtnEl = document.getElementById('shareBtn');
         statusActions.insertBefore(selector, shareBtnEl);
         
-        addConsoleLine(`Селектор качества: ${levels.length} уровней`, 'info');
+        // Детальная информация о каждом уровне
+        addConsoleLine(`Доступно ${levels.length} уровней качества:`, 'info');
+        levels.forEach((level, index) => {
+            const height = level.height || '?';
+            const bw = level.bitrate ? Math.round(level.bitrate / 1000) : '?';
+            const fps = level.attrs?.FRAME_RATE || level.frameRate || '';
+            const codecs = level.attrs?.CODECS || level.codecs || '';
+            const details = [];
+            if (height) details.push(`${height}p`);
+            if (bw) details.push(`${bw} kbps`);
+            if (fps) details.push(`${fps} fps`);
+            if (codecs) details.push(codecs.replace(/"/g, ''));
+            addConsoleLine(`  Уровень ${index}: ${details.join(', ')}`, 'info');
+        });
     }
 
     function switchQuality(levelIndex) {
@@ -155,7 +178,7 @@
             if (levels && levels.length > 0) {
                 streamInfo.textContent = `🎯 Авто | ${levels.length} уровней`;
             }
-            addConsoleLine('Переключено на авто-качество', 'info');
+            addConsoleLine(`Переключено на авто-качество (было: уровень ${oldLevel >= 0 ? oldLevel : 'авто'})`, 'info');
         } else {
             hls.currentLevel = levelIndex;
             const level = hls.levels[levelIndex];
@@ -163,7 +186,7 @@
                 const height = level.height || '?p';
                 const bandwidth = level.bitrate ? Math.round(level.bitrate / 1000) : '?';
                 streamInfo.textContent = `🔒 ${height} | ${bandwidth} kbps`;
-                addConsoleLine(`Ручное переключение на ${height} (${bandwidth} kbps)`, 'info');
+                addConsoleLine(`Ручное переключение: уровень ${levelIndex} (${height}, ${bandwidth} kbps)`, 'info');
             }
         }
         
@@ -177,7 +200,10 @@
         if (currentLevel === -1 && hls && hls.levels) {
             const level = hls.levels[data.level];
             if (level) {
-                streamInfo.textContent = `🎯 ${level.height || '?'}p | ${Math.round(level.bitrate / 1000)} kbps`;
+                const height = level.height || '?';
+                const bw = level.bitrate ? Math.round(level.bitrate / 1000) : '?';
+                streamInfo.textContent = `🎯 ${height}p | ${bw} kbps`;
+                addConsoleLine(`Авто-переключение: уровень ${data.level} (${height}p, ${bw} kbps)`, 'info');
             }
         }
     }
@@ -271,18 +297,36 @@
 
     // ==================== HLS Validation & Inspection ====================
     async function fetchPlaylist(url) {
+        const startTime = performance.now();
         addConsoleLine(`Запрос плейлиста: ${url}`, 'info');
-        const response = await fetch(url, {
-            headers: { 'Accept': 'application/vnd.apple.mpegurl, application/x-mpegURL, */*' }
-        });
-        if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        addConsoleLine(`Ответ: HTTP ${response.status} OK`, 'success');
+        
+        let response;
+        try {
+            response = await fetch(url, {
+                headers: { 'Accept': 'application/vnd.apple.mpegurl, application/x-mpegURL, */*' }
+            });
+        } catch (fetchError) {
+            addConsoleLine(`Ошибка сети при запросе: ${fetchError.message}`, 'error');
+            throw fetchError;
+        }
+        
+        const elapsed = (performance.now() - startTime).toFixed(0);
+        
+        if (!response.ok) {
+            addConsoleLine(`HTTP ${response.status} ${response.statusText} (${elapsed}ms)`, 'error');
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const contentLength = response.headers.get('content-length');
+        const contentType = response.headers.get('content-type');
+        addConsoleLine(`Ответ: HTTP ${response.status} OK (${elapsed}ms)${contentLength ? ', размер: ' + (contentLength/1024).toFixed(1) + ' KB' : ''}${contentType ? ', тип: ' + contentType : ''}`, 'success');
+        
         return await response.text();
     }
 
     function parsePlaylist(content, url) {
         const lines = content.split('\n').map(l => l.trim()).filter(l => l);
-        addConsoleLine(`Строк в плейлисте: ${lines.length}`, 'info');
+        addConsoleLine(`Плейлист загружен: ${lines.length} строк`, 'info');
         
         const info = {
             type: 'unknown',
@@ -350,6 +394,20 @@
                 info.hasIndependentSegments = true;
             }
         }
+
+        // Выводим сводку
+        addConsoleLine(`Тип: ${info.type === 'master' ? 'Master (Multivariant)' : info.type === 'media' ? 'Media' : 'Неизвестный'}`, 'info');
+        addConsoleLine(`Версия HLS: ${info.version || 'не указана'}`, 'info');
+        addConsoleLine(`Режим: ${info.isLive ? 'Live' : 'VOD'}${info.hasEndList ? ' (с ENDLIST)' : ''}`, 'info');
+        
+        if (info.type === 'master') {
+            addConsoleLine(`Видео-вариантов: ${info.variants.filter(v => !v.type || v.type !== 'media').length}`, 'info');
+            addConsoleLine(`Аудио-дорожек: ${info.variants.filter(v => v.type === 'AUDIO' || v.TYPE === 'AUDIO').length}`, 'info');
+            if (info.resolutions.length) addConsoleLine(`Разрешения: ${info.resolutions.join(', ')}`, 'info');
+            if (info.codecs.size) addConsoleLine(`Кодеки: ${[...info.codecs].join(', ')}`, 'info');
+        }
+        
+        addConsoleLine(`Найдено тегов: ${info.tags.length}`, 'info');
 
         return info;
     }
@@ -450,18 +508,19 @@
 
         showLoading('Анализ потока...');
         updateStatus('warning', 'Инспекция потока...');
-        addConsoleLine('Начало инспекции потока...', 'info');
+        addConsoleLine('═══════ НАЧАЛО ИНСПЕКЦИИ ═══════', 'info');
 
         try {
             const content = await fetchPlaylist(url);
             const info = parsePlaylist(content, url);
             renderInspectionResult(info, url);
             updateStatus('active', 'Инспекция завершена');
-            addConsoleLine('Инспекция успешно завершена', 'success');
+            addConsoleLine('═══════ ИНСПЕКЦИЯ ЗАВЕРШЕНА ═══════', 'success');
         } catch (error) {
             showInspectionError(error, url);
             updateStatus('error', 'Ошибка инспекции');
             addConsoleLine(`Ошибка инспекции: ${error.message}`, 'error');
+            addConsoleLine('═══════ ИНСПЕКЦИЯ ПРЕРВАНА ═══════', 'error');
         } finally {
             hideLoading();
         }
@@ -470,9 +529,10 @@
     // ==================== Player Management ====================
     function destroyPlayer() {
         if (hls) {
+            addConsoleLine('Остановка плеера...', 'info');
             hls.destroy();
             hls = null;
-            addConsoleLine('Плеер остановлен', 'info');
+            addConsoleLine('Плеер остановлен, ресурсы освобождены', 'info');
         }
         video.pause();
         video.removeAttribute('src');
@@ -496,7 +556,13 @@
         streamInfo.textContent = 'Загрузка...';
         updateStatus('idle', 'Подключение к потоку...');
         
-        addConsoleLine(`Подключение к потоку: ${url}`, 'info');
+        addConsoleLine('═══════ ЗАПУСК ПЛЕЕРА ═══════', 'info');
+        addConsoleLine(`URL потока: ${url}`, 'info');
+        
+        // Базовая информация о браузере
+        const ua = navigator.userAgent;
+        const browser = ua.includes('Chrome') ? 'Chrome' : ua.includes('Firefox') ? 'Firefox' : ua.includes('Safari') ? 'Safari' : ua.includes('Edge') ? 'Edge' : 'Неизвестный';
+        addConsoleLine(`Браузер: ${browser}, HLS.js: поддерживается`, 'info');
         
         clearInspector();
         
@@ -504,19 +570,24 @@
         window.history.pushState({ stream: url }, '', newUrl);
 
         if (Hls.isSupported()) {
-            addConsoleLine('HLS.js поддерживается, инициализация плеера', 'info');
+            addConsoleLine('Инициализация HLS.js плеера...', 'info');
             
             hls = new Hls({
                 debug: false,
-                enableWorker: true
+                enableWorker: true,
+                lowLatencyMode: false
             });
             
+            addConsoleLine('Загрузка источника...', 'info');
             hls.loadSource(url);
             hls.attachMedia(video);
             
             hls.on(Hls.Events.MANIFEST_PARSED, function(event, data) {
                 updateStatus('active', 'Воспроизведение активно');
-                addConsoleLine(`Манифест обработан: ${data.levels.length} уровней`, 'success');
+                addConsoleLine(`Манифест обработан успешно`, 'success');
+                addConsoleLine(`Уровней качества: ${data.levels.length}`, 'success');
+                addConsoleLine(`Длительность: ${data.levels[0]?.details?.totalduration?.toFixed(1) || 'N/A'} сек`, 'info');
+                addConsoleLine(`Тип: ${data.levels[0]?.details?.live ? 'Live' : 'VOD'}`, 'info');
                 
                 createQualitySelector(data.levels);
                 
@@ -530,43 +601,77 @@
                 
                 videoPlaceholder.style.display = 'none';
                 document.querySelector('.video-wrapper').classList.add('playing');
-                video.play().catch(() => {
-                    addConsoleLine('Автовоспроизведение заблокировано браузером', 'warn');
-                });
+                
+                const playPromise = video.play();
+                if (playPromise !== undefined) {
+                    playPromise.then(() => {
+                        addConsoleLine('Воспроизведение запущено', 'success');
+                    }).catch((err) => {
+                        addConsoleLine(`Автовоспроизведение заблокировано: ${err.name}`, 'warn');
+                        addConsoleLine('Нажмите кнопку воспроизведения в плеере', 'warn');
+                    });
+                }
             });
             
             hls.on(Hls.Events.LEVEL_SWITCHED, function(event, data) {
                 updateQualitySelectorOnSwitch(event, data);
             });
             
+            hls.on(Hls.Events.FRAG_LOADING, function(event, data) {
+                // Инфо о загрузке фрагментов (редко, чтобы не спамить)
+                if (data.frag && data.frag.sn !== undefined && data.frag.sn % 10 === 0) {
+                    addConsoleLine(`Загрузка фрагмента #${data.frag.sn}...`, 'info');
+                }
+            });
+            
+            hls.on(Hls.Events.FRAG_LOADED, function(event, data) {
+                if (data.frag && data.frag.sn !== undefined && data.frag.sn % 10 === 0) {
+                    const loadTime = data.stats ? (data.stats.loading.end - data.stats.loading.start).toFixed(0) : '?';
+                    addConsoleLine(`Фрагмент #${data.frag.sn} загружен (${loadTime}ms)`, 'info');
+                }
+            });
+            
             hls.on(Hls.Events.ERROR, function(event, data) {
+                const errorType = data.type || 'Неизвестный тип';
+                const errorDetails = data.details || 'Нет деталей';
+                const errorFatal = data.fatal ? 'FATAL' : 'WARN';
+                
                 if (data.fatal) {
                     switch(data.type) {
                         case Hls.ErrorTypes.NETWORK_ERROR:
-                            addConsoleLine(`[FATAL] Ошибка сети: переподключение...`, 'error');
+                            addConsoleLine(`[${errorFatal}] Сетевая ошибка: ${errorDetails}`, 'error');
+                            addConsoleLine(`  Попытка переподключения...`, 'warn');
                             updateStatus('error', 'Ошибка сети. Переподключение...');
                             hls.startLoad();
                             break;
                         case Hls.ErrorTypes.MEDIA_ERROR:
-                            addConsoleLine(`[FATAL] Ошибка медиа: восстановление...`, 'error');
+                            addConsoleLine(`[${errorFatal}] Медиа-ошибка: ${errorDetails}`, 'error');
+                            addConsoleLine(`  Попытка восстановления...`, 'warn');
                             updateStatus('error', 'Ошибка медиа. Восстановление...');
                             hls.recoverMediaError();
                             break;
                         default:
-                            addConsoleLine(`[FATAL] Критическая ошибка: ${data.details}`, 'error');
+                            addConsoleLine(`[${errorFatal}] Критическая ошибка: ${errorDetails}`, 'error');
+                            addConsoleLine(`  Тип: ${errorType}, восстановление невозможно`, 'error');
                             updateStatus('error', 'Критическая ошибка');
                             destroyPlayer();
                             break;
                     }
                 } else {
-                    // Не-фатальные ошибки тоже логируем
-                    const errMsg = data.details || data.type || 'Неизвестная ошибка';
-                    addConsoleLine(`[WARN] ${errMsg}`, 'warn');
+                    addConsoleLine(`[${errorFatal}] ${errorType}: ${errorDetails}`, 'warn');
                 }
             });
             
-            hls.on(Hls.Events.FRAG_LOADED, function(event, data) {
-                // Не логируем каждый фрагмент чтобы не засорять консоль
+            hls.on(Hls.Events.BUFFER_APPENDING, function(event, data) {
+                if (data.type === 'video' && data.data && data.data.length > 0) {
+                    const sizeKB = (data.data.byteLength / 1024).toFixed(1);
+                    // Логируем только каждый 5-й чтобы не спамить
+                    if (!window._bufferLogCounter) window._bufferLogCounter = 0;
+                    window._bufferLogCounter++;
+                    if (window._bufferLogCounter % 5 === 0) {
+                        addConsoleLine(`Буферизация: +${sizeKB} KB видео`, 'info');
+                    }
+                }
             });
             
         } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
@@ -577,13 +682,19 @@
                 streamInfo.textContent = 'Встроенный плеер';
                 videoPlaceholder.style.display = 'none';
                 document.querySelector('.video-wrapper').classList.add('playing');
-                addConsoleLine('Нативное воспроизведение запущено', 'success');
+                addConsoleLine('Метаданные загружены, нативное воспроизведение запущено', 'success');
+                addConsoleLine(`Размер видео: ${video.videoWidth}x${video.videoHeight}`, 'info');
+                addConsoleLine(`Длительность: ${video.duration.toFixed(1)} сек`, 'info');
+            });
+            video.addEventListener('error', function(e) {
+                addConsoleLine(`Ошибка нативного плеера: ${video.error?.message || 'Неизвестная ошибка'}`, 'error');
             });
             video.play().catch(() => {
-                addConsoleLine('Автовоспроизведение заблокировано', 'warn');
+                addConsoleLine('Автовоспроизведение заблокировано браузером', 'warn');
             });
         } else {
-            addConsoleLine('HLS не поддерживается браузером', 'error');
+            addConsoleLine('КРИТИЧЕСКАЯ ОШИБКА: HLS не поддерживается браузером', 'error');
+            addConsoleLine(`User-Agent: ${navigator.userAgent}`, 'error');
             updateStatus('error', 'HLS не поддерживается');
             streamInfo.textContent = '❌ Не поддерживается';
         }
@@ -651,7 +762,6 @@
     }
 
     function handleToggleConsole(e) {
-        // Не срабатывает при клике на кнопки внутри хедера
         if (e.target.closest('#clearConsole') || e.target.closest('#toggleConsole')) {
             return;
         }
@@ -675,7 +785,6 @@
             streamInfo.textContent = '';
         }
         
-        // Консоль по умолчанию свёрнута
         consolePanel.classList.add('collapsed');
         clearConsole();
     }
@@ -688,7 +797,6 @@
     testStreamBtns.forEach(btn => btn.addEventListener('click', handleTestStreamClick));
     window.addEventListener('popstate', handlePopState);
     
-    // Console events
     consoleHeader.addEventListener('click', handleToggleConsole);
     clearConsoleBtn.addEventListener('click', handleClearConsole);
 
