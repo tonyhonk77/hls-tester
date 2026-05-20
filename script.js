@@ -16,33 +16,110 @@
     const loadingText = document.getElementById('loadingText');
     const copyNotification = document.getElementById('copyNotification');
     const testStreamBtns = document.querySelectorAll('.btn-test');
+    
+    // Console elements
+    const consolePanel = document.getElementById('consolePanel');
+    const consoleContent = document.getElementById('consoleContent');
+    const consoleCounter = document.getElementById('consoleCounter');
+    const consoleHeader = document.getElementById('consoleHeader');
+    const toggleConsole = document.getElementById('toggleConsole');
+    const clearConsoleBtn = document.getElementById('clearConsole');
+    const toggleIcon = document.getElementById('toggleIcon');
 
     // ==================== State ====================
     let hls = null;
     let currentUrl = '';
     let currentLevel = -1; // -1 = auto
+    let logCount = 0;
+    let errorCount = 0;
     const EMPTY_URL_MESSAGE = 'Вставьте ссылку на поток, либо выберите один из тестовых!';
+
+    // ==================== Console Functions ====================
+    function getTimestamp() {
+        const now = new Date();
+        return now.toLocaleTimeString('ru-RU', { hour12: false });
+    }
+
+    function addConsoleLine(message, type) {
+        logCount++;
+        
+        // Убираем плейсхолдер при первом логе
+        const placeholder = consoleContent.querySelector('.console-placeholder');
+        if (placeholder) {
+            placeholder.innerHTML = '';
+            placeholder.className = '';
+        }
+
+        const line = document.createElement('span');
+        line.className = `console-line console-line-${type}`;
+        
+        const timestamp = document.createElement('span');
+        timestamp.className = 'console-timestamp';
+        timestamp.textContent = `[${getTimestamp()}]`;
+        
+        line.appendChild(timestamp);
+        line.appendChild(document.createTextNode(message));
+        
+        const container = consoleContent.querySelector('div') || consoleContent;
+        container.appendChild(line);
+        
+        // Автоскролл вниз
+        consoleContent.scrollTop = consoleContent.scrollHeight;
+        
+        // Обновляем счётчик
+        if (type === 'error') errorCount++;
+        updateConsoleCounter();
+        
+        // Разворачиваем консоль если была свёрнута и есть ошибка
+        if (type === 'error' && consolePanel.classList.contains('collapsed')) {
+            toggleConsolePanel(false);
+        }
+    }
+
+    function updateConsoleCounter() {
+        consoleCounter.textContent = logCount;
+        if (errorCount > 0) {
+            consoleCounter.classList.add('has-errors');
+        } else {
+            consoleCounter.classList.remove('has-errors');
+        }
+    }
+
+    function clearConsole() {
+        logCount = 0;
+        errorCount = 0;
+        consoleContent.innerHTML = '<div class="console-placeholder"><span class="console-line console-line-dimmed">Ожидание подключения к потоку...</span></div>';
+        updateConsoleCounter();
+    }
+
+    function toggleConsolePanel(forceState) {
+        if (typeof forceState === 'boolean') {
+            if (forceState) {
+                consolePanel.classList.remove('collapsed');
+            } else {
+                consolePanel.classList.add('collapsed');
+            }
+        } else {
+            consolePanel.classList.toggle('collapsed');
+        }
+    }
 
     // ==================== Quality Selector ====================
     function createQualitySelector(levels) {
-        // Удаляем старый селектор если есть
         const existingSelector = document.getElementById('qualitySelector');
         if (existingSelector) existingSelector.remove();
 
-        // Если уровней 1 или меньше - не показываем
         if (!levels || levels.length <= 1) return;
 
         const selector = document.createElement('select');
         selector.id = 'qualitySelector';
         selector.className = 'quality-selector';
         
-        // Auto option
         const autoOption = document.createElement('option');
         autoOption.value = '-1';
         autoOption.textContent = '🎯 Авто';
         selector.appendChild(autoOption);
         
-        // Level options
         levels.forEach((level, index) => {
             const option = document.createElement('option');
             option.value = index;
@@ -52,7 +129,6 @@
             selector.appendChild(option);
         });
         
-        // Восстанавливаем выбранный уровень
         selector.value = currentLevel;
         
         selector.addEventListener('change', function() {
@@ -60,34 +136,37 @@
             switchQuality(newLevel);
         });
         
-        // Вставляем перед кнопкой Share
         const statusActions = document.querySelector('.status-actions');
         const shareBtnEl = document.getElementById('shareBtn');
         statusActions.insertBefore(selector, shareBtnEl);
+        
+        addConsoleLine(`Селектор качества: ${levels.length} уровней`, 'info');
     }
 
     function switchQuality(levelIndex) {
         if (!hls) return;
         
+        const oldLevel = currentLevel;
         currentLevel = levelIndex;
         
         if (levelIndex === -1) {
-            hls.currentLevel = -1; // Авто
+            hls.currentLevel = -1;
             const levels = hls.levels;
             if (levels && levels.length > 0) {
                 streamInfo.textContent = `🎯 Авто | ${levels.length} уровней`;
             }
+            addConsoleLine('Переключено на авто-качество', 'info');
         } else {
-            hls.currentLevel = levelIndex; // Фиксируем
+            hls.currentLevel = levelIndex;
             const level = hls.levels[levelIndex];
             if (level) {
                 const height = level.height || '?p';
                 const bandwidth = level.bitrate ? Math.round(level.bitrate / 1000) : '?';
                 streamInfo.textContent = `🔒 ${height} | ${bandwidth} kbps`;
+                addConsoleLine(`Ручное переключение на ${height} (${bandwidth} kbps)`, 'info');
             }
         }
         
-        // Синхронизируем селектор
         const selector = document.getElementById('qualitySelector');
         if (selector) {
             selector.value = levelIndex;
@@ -192,15 +271,19 @@
 
     // ==================== HLS Validation & Inspection ====================
     async function fetchPlaylist(url) {
+        addConsoleLine(`Запрос плейлиста: ${url}`, 'info');
         const response = await fetch(url, {
             headers: { 'Accept': 'application/vnd.apple.mpegurl, application/x-mpegURL, */*' }
         });
         if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        addConsoleLine(`Ответ: HTTP ${response.status} OK`, 'success');
         return await response.text();
     }
 
     function parsePlaylist(content, url) {
         const lines = content.split('\n').map(l => l.trim()).filter(l => l);
+        addConsoleLine(`Строк в плейлисте: ${lines.length}`, 'info');
+        
         const info = {
             type: 'unknown',
             version: null,
@@ -367,15 +450,18 @@
 
         showLoading('Анализ потока...');
         updateStatus('warning', 'Инспекция потока...');
+        addConsoleLine('Начало инспекции потока...', 'info');
 
         try {
             const content = await fetchPlaylist(url);
             const info = parsePlaylist(content, url);
             renderInspectionResult(info, url);
             updateStatus('active', 'Инспекция завершена');
+            addConsoleLine('Инспекция успешно завершена', 'success');
         } catch (error) {
             showInspectionError(error, url);
             updateStatus('error', 'Ошибка инспекции');
+            addConsoleLine(`Ошибка инспекции: ${error.message}`, 'error');
         } finally {
             hideLoading();
         }
@@ -386,6 +472,7 @@
         if (hls) {
             hls.destroy();
             hls = null;
+            addConsoleLine('Плеер остановлен', 'info');
         }
         video.pause();
         video.removeAttribute('src');
@@ -409,12 +496,16 @@
         streamInfo.textContent = 'Загрузка...';
         updateStatus('idle', 'Подключение к потоку...');
         
+        addConsoleLine(`Подключение к потоку: ${url}`, 'info');
+        
         clearInspector();
         
         const newUrl = getShareableUrl(url);
         window.history.pushState({ stream: url }, '', newUrl);
 
         if (Hls.isSupported()) {
+            addConsoleLine('HLS.js поддерживается, инициализация плеера', 'info');
+            
             hls = new Hls({
                 debug: false,
                 enableWorker: true
@@ -425,8 +516,8 @@
             
             hls.on(Hls.Events.MANIFEST_PARSED, function(event, data) {
                 updateStatus('active', 'Воспроизведение активно');
+                addConsoleLine(`Манифест обработан: ${data.levels.length} уровней`, 'success');
                 
-                // Create quality selector
                 createQualitySelector(data.levels);
                 
                 currentLevel = -1;
@@ -439,7 +530,9 @@
                 
                 videoPlaceholder.style.display = 'none';
                 document.querySelector('.video-wrapper').classList.add('playing');
-                video.play().catch(() => {});
+                video.play().catch(() => {
+                    addConsoleLine('Автовоспроизведение заблокировано браузером', 'warn');
+                });
             });
             
             hls.on(Hls.Events.LEVEL_SWITCHED, function(event, data) {
@@ -450,31 +543,47 @@
                 if (data.fatal) {
                     switch(data.type) {
                         case Hls.ErrorTypes.NETWORK_ERROR:
+                            addConsoleLine(`[FATAL] Ошибка сети: переподключение...`, 'error');
                             updateStatus('error', 'Ошибка сети. Переподключение...');
                             hls.startLoad();
                             break;
                         case Hls.ErrorTypes.MEDIA_ERROR:
+                            addConsoleLine(`[FATAL] Ошибка медиа: восстановление...`, 'error');
                             updateStatus('error', 'Ошибка медиа. Восстановление...');
                             hls.recoverMediaError();
                             break;
                         default:
+                            addConsoleLine(`[FATAL] Критическая ошибка: ${data.details}`, 'error');
                             updateStatus('error', 'Критическая ошибка');
                             destroyPlayer();
                             break;
                     }
+                } else {
+                    // Не-фатальные ошибки тоже логируем
+                    const errMsg = data.details || data.type || 'Неизвестная ошибка';
+                    addConsoleLine(`[WARN] ${errMsg}`, 'warn');
                 }
             });
             
+            hls.on(Hls.Events.FRAG_LOADED, function(event, data) {
+                // Не логируем каждый фрагмент чтобы не засорять консоль
+            });
+            
         } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+            addConsoleLine('Нативное HLS воспроизведение (Safari)', 'info');
             video.src = url;
             video.addEventListener('loadedmetadata', function() {
                 updateStatus('active', 'Нативное HLS');
                 streamInfo.textContent = 'Встроенный плеер';
                 videoPlaceholder.style.display = 'none';
                 document.querySelector('.video-wrapper').classList.add('playing');
+                addConsoleLine('Нативное воспроизведение запущено', 'success');
             });
-            video.play().catch(() => {});
+            video.play().catch(() => {
+                addConsoleLine('Автовоспроизведение заблокировано', 'warn');
+            });
         } else {
+            addConsoleLine('HLS не поддерживается браузером', 'error');
             updateStatus('error', 'HLS не поддерживается');
             streamInfo.textContent = '❌ Не поддерживается';
         }
@@ -541,6 +650,18 @@
         }
     }
 
+    function handleToggleConsole(e) {
+        // Не срабатывает при клике на кнопки внутри хедера
+        if (e.target.closest('#clearConsole') || e.target.closest('#toggleConsole')) {
+            return;
+        }
+        toggleConsolePanel();
+    }
+
+    function handleClearConsole() {
+        clearConsole();
+    }
+
     // ==================== Initialize ====================
     function init() {
         const params = new URLSearchParams(window.location.search);
@@ -553,6 +674,10 @@
             updateStatus('idle', 'Готов к работе');
             streamInfo.textContent = '';
         }
+        
+        // Консоль по умолчанию свёрнута
+        consolePanel.classList.add('collapsed');
+        clearConsole();
     }
 
     // ==================== Event Listeners ====================
@@ -562,6 +687,10 @@
     shareBtn.addEventListener('click', handleShare);
     testStreamBtns.forEach(btn => btn.addEventListener('click', handleTestStreamClick));
     window.addEventListener('popstate', handlePopState);
+    
+    // Console events
+    consoleHeader.addEventListener('click', handleToggleConsole);
+    clearConsoleBtn.addEventListener('click', handleClearConsole);
 
     init();
 })();
